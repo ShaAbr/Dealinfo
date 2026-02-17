@@ -252,6 +252,52 @@ class LostStockEntry {
   }
 }
 
+class DealerTakeEntry {
+  DealerTakeEntry({
+    required this.id,
+    required this.dealerId,
+    required this.stockItemId,
+    required this.itemName,
+    required this.stockType,
+    required this.itemPrice,
+    required this.quantity,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String dealerId;
+  final String stockItemId;
+  final String itemName;
+  final String stockType;
+  final double itemPrice;
+  final int quantity;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'dealerId': dealerId,
+        'stockItemId': stockItemId,
+        'itemName': itemName,
+        'stockType': stockType,
+        'itemPrice': itemPrice,
+        'quantity': quantity,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory DealerTakeEntry.fromJson(Map<String, dynamic> json) {
+    return DealerTakeEntry(
+      id: json['id'] as String,
+      dealerId: json['dealerId'] as String,
+      stockItemId: json['stockItemId'] as String? ?? '',
+      itemName: json['itemName'] as String? ?? 'Unknown item',
+      stockType: json['stockType'] as String? ?? 'General',
+      itemPrice: (json['itemPrice'] as num?)?.toDouble() ?? 0,
+      quantity: json['quantity'] as int? ?? 1,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+}
+
 class StockItem {
   StockItem({
     required this.id,
@@ -452,6 +498,7 @@ class AppData {
     required this.sales,
     required this.gifts,
     required this.lostStock,
+    required this.dealerTakes,
     required this.stockTypes,
     required this.stockItems,
     required this.stockAdditions,
@@ -465,6 +512,7 @@ class AppData {
   final List<SaleEntry> sales;
   final List<GiftEntry> gifts;
   final List<LostStockEntry> lostStock;
+  final List<DealerTakeEntry> dealerTakes;
   final List<String> stockTypes;
   final List<StockItem> stockItems;
   final List<StockAdditionEntry> stockAdditions;
@@ -478,6 +526,7 @@ class AppData {
         sales: [],
         gifts: [],
         lostStock: [],
+        dealerTakes: [],
         stockTypes: [],
         stockItems: [],
         stockAdditions: [],
@@ -490,6 +539,7 @@ class AppData {
     List<SaleEntry>? sales,
     List<GiftEntry>? gifts,
     List<LostStockEntry>? lostStock,
+    List<DealerTakeEntry>? dealerTakes,
     List<String>? stockTypes,
     List<StockItem>? stockItems,
     List<StockAdditionEntry>? stockAdditions,
@@ -503,6 +553,7 @@ class AppData {
       sales: sales ?? this.sales,
       gifts: gifts ?? this.gifts,
       lostStock: lostStock ?? this.lostStock,
+      dealerTakes: dealerTakes ?? this.dealerTakes,
       stockTypes: stockTypes ?? this.stockTypes,
       stockItems: stockItems ?? this.stockItems,
       stockAdditions: stockAdditions ?? this.stockAdditions,
@@ -518,6 +569,7 @@ class AppData {
         'sales': sales.map((sale) => sale.toJson()).toList(),
         'gifts': gifts.map((gift) => gift.toJson()).toList(),
         'lostStock': lostStock.map((entry) => entry.toJson()).toList(),
+        'dealerTakes': dealerTakes.map((entry) => entry.toJson()).toList(),
         'stockTypes': stockTypes,
         'stockItems': stockItems.map((item) => item.toJson()).toList(),
         'stockAdditions': stockAdditions.map((entry) => entry.toJson()).toList(),
@@ -532,6 +584,7 @@ class AppData {
     final rawSales = (json['sales'] as List<dynamic>? ?? []);
     final rawGifts = (json['gifts'] as List<dynamic>? ?? []);
     final rawLostStock = (json['lostStock'] as List<dynamic>? ?? []);
+    final rawDealerTakes = (json['dealerTakes'] as List<dynamic>? ?? []);
     final rawStockTypes = (json['stockTypes'] as List<dynamic>? ?? []);
     final rawStockItems = (json['stockItems'] as List<dynamic>? ?? []);
     final rawStockAdditions = (json['stockAdditions'] as List<dynamic>? ?? []);
@@ -563,12 +616,16 @@ class AppData {
     final lostStock = rawLostStock
       .map((lostJson) => LostStockEntry.fromJson(lostJson as Map<String, dynamic>))
       .toList();
+    final dealerTakes = rawDealerTakes
+      .map((takeJson) => DealerTakeEntry.fromJson(takeJson as Map<String, dynamic>))
+      .toList();
 
     final stockTypes = {
       ...rawStockTypes.map((entry) => entry.toString()),
       ...stockItems.map((item) => item.stockType),
       ...gifts.map((entry) => entry.stockType),
       ...lostStock.map((entry) => entry.stockType),
+      ...dealerTakes.map((entry) => entry.stockType),
     }.where((entry) => entry.trim().isNotEmpty).toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
@@ -583,6 +640,7 @@ class AppData {
           .toList(),
         gifts: gifts,
         lostStock: lostStock,
+        dealerTakes: dealerTakes,
       stockTypes: stockTypes,
       stockItems: stockItems,
         stockAdditions: rawStockAdditions

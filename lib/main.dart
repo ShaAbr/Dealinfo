@@ -741,6 +741,19 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
       }
     }
 
+    for (final take in widget.data.dealerTakes) {
+      final text = '${take.stockType} ${take.itemName} dealer take ${_dealerLabel(take.dealerId)}';
+      if (text.toLowerCase().contains(query)) {
+        results.add(
+          _GlobalSearchResult(
+            category: 'Dealer Take',
+            title: '${take.stockType} • ${take.itemName}',
+            detail: '${_dealerLabel(take.dealerId)} • Qty ${take.quantity}',
+          ),
+        );
+      }
+    }
+
     return results;
   }
 
@@ -1036,6 +1049,7 @@ class _IntegrityToolsScreenState extends State<IntegrityToolsScreen> {
       ...repairedStock.map((item) => item.stockType),
       ...data.gifts.map((item) => item.stockType),
       ...data.lostStock.map((item) => item.stockType),
+      ...data.dealerTakes.map((item) => item.stockType),
     }.where((entry) => entry.trim().isNotEmpty).toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
@@ -1760,6 +1774,17 @@ class _DealerHistoryTabState extends State<_DealerHistoryTab> {
       );
     }
 
+    for (final take in widget.data.dealerTakes.where((entry) => entry.dealerId == dealer.id)) {
+      events.add(
+        _HistoryEvent(
+          type: 'Dealer Take',
+          date: take.createdAt,
+          detail:
+              '${take.stockType} • ${take.itemName} • Qty ${take.quantity} • R${take.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
     events.sort((a, b) {
       if (_sortOrder == _HistorySortOrder.newest) {
         return b.date.compareTo(a.date);
@@ -1923,6 +1948,7 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
     final fromSales = widget.data.sales.map(widget.stockTypeForSale);
     final fromGifts = widget.data.gifts.map((gift) => gift.stockType);
     final fromLost = widget.data.lostStock.map((entry) => entry.stockType);
+    final fromDealerTake = widget.data.dealerTakes.map((entry) => entry.stockType);
 
     final all = <String>{
       ...fromSettings,
@@ -1931,6 +1957,7 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
       ...fromSales,
       ...fromGifts,
       ...fromLost,
+      ...fromDealerTake,
     };
 
     final cleaned = all.where((type) => type.trim().isNotEmpty).toList()
@@ -1989,6 +2016,17 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
           type: 'Lost',
           date: lost.createdAt,
           detail: '${lost.itemName} • Qty ${lost.quantity} • R${lost.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
+    for (final take in widget.data.dealerTakes.where((entry) => entry.stockType == stockType)) {
+      events.add(
+        _HistoryEvent(
+          type: 'Dealer Take',
+          date: take.createdAt,
+          detail:
+              '${widget.dealerLabel(take.dealerId)} • ${take.itemName} • Qty ${take.quantity} • R${take.itemPrice.toStringAsFixed(2)}',
         ),
       );
     }
@@ -2090,12 +2128,18 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
                 final lostValue = widget.data.lostStock
                   .where((entry) => entry.stockType == type)
                   .fold<double>(0, (sum, entry) => sum + (entry.itemPrice * entry.quantity));
+              final dealerTakeCount = widget.data.dealerTakes
+                  .where((entry) => entry.stockType == type)
+                  .fold<int>(0, (sum, entry) => sum + entry.quantity);
+              final dealerTakeValue = widget.data.dealerTakes
+                  .where((entry) => entry.stockType == type)
+                  .fold<double>(0, (sum, entry) => sum + (entry.itemPrice * entry.quantity));
               final events = _eventsForType(type);
 
               return ExpansionTile(
                 title: Text(type),
                 subtitle: Text(
-                  'Sales: $saleCount (R${saleValue.toStringAsFixed(2)}) • Ticks: $tickCount (R${tickValue.toStringAsFixed(2)}) • Gifts: $giftCount (R${giftValue.toStringAsFixed(2)}) • Lost: $lostCount (R${lostValue.toStringAsFixed(2)})',
+                  'Sales: $saleCount (R${saleValue.toStringAsFixed(2)}) • Ticks: $tickCount (R${tickValue.toStringAsFixed(2)}) • Gifts: $giftCount (R${giftValue.toStringAsFixed(2)}) • Lost: $lostCount (R${lostValue.toStringAsFixed(2)}) • Dealer-taken: $dealerTakeCount (R${dealerTakeValue.toStringAsFixed(2)})',
                 ),
                 children: events.isEmpty
                     ? const [
@@ -2165,6 +2209,17 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
       );
     }
 
+    for (final take in widget.data.dealerTakes) {
+      events.add(
+        _HistoryEvent(
+          type: 'Dealer Take',
+          date: take.createdAt,
+          detail:
+              '${widget.dealerLabel(take.dealerId)} • ${take.stockType} • ${take.itemName} • Qty ${take.quantity} • R${take.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
     events.sort((a, b) {
       if (_sortOrder == _HistorySortOrder.newest) {
         return b.date.compareTo(a.date);
@@ -2196,8 +2251,11 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
     final lostCount = widget.data.lostStock.fold<int>(0, (sum, entry) => sum + entry.quantity);
     final lostValue = widget.data.lostStock
         .fold<double>(0, (sum, entry) => sum + (entry.itemPrice * entry.quantity));
+    final dealerTakeCount = widget.data.dealerTakes.fold<int>(0, (sum, entry) => sum + entry.quantity);
+    final dealerTakeValue = widget.data.dealerTakes
+        .fold<double>(0, (sum, entry) => sum + (entry.itemPrice * entry.quantity));
 
-    final byDay = <String, ({DateTime day, int gifted, int lost})>{};
+    final byDay = <String, ({DateTime day, int gifted, int lost, int dealerTake})>{};
     for (final gift in widget.data.gifts) {
       final day = DateTime(gift.createdAt.year, gift.createdAt.month, gift.createdAt.day);
       final key = day.toIso8601String();
@@ -2206,6 +2264,7 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
         day: day,
         gifted: (existing?.gifted ?? 0) + gift.quantity,
         lost: existing?.lost ?? 0,
+        dealerTake: existing?.dealerTake ?? 0,
       );
     }
     for (final lost in widget.data.lostStock) {
@@ -2216,14 +2275,28 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
         day: day,
         gifted: existing?.gifted ?? 0,
         lost: (existing?.lost ?? 0) + lost.quantity,
+        dealerTake: existing?.dealerTake ?? 0,
+      );
+    }
+    for (final take in widget.data.dealerTakes) {
+      final day = DateTime(take.createdAt.year, take.createdAt.month, take.createdAt.day);
+      final key = day.toIso8601String();
+      final existing = byDay[key];
+      byDay[key] = (
+        day: day,
+        gifted: existing?.gifted ?? 0,
+        lost: existing?.lost ?? 0,
+        dealerTake: (existing?.dealerTake ?? 0) + take.quantity,
       );
     }
     final dayTotals = byDay.values.toList()..sort((a, b) => a.day.compareTo(b.day));
     final giftSpots = <FlSpot>[];
     final lostSpots = <FlSpot>[];
+    final dealerTakeSpots = <FlSpot>[];
     for (var index = 0; index < dayTotals.length; index++) {
       giftSpots.add(FlSpot(index.toDouble(), dayTotals[index].gifted.toDouble()));
       lostSpots.add(FlSpot(index.toDouble(), dayTotals[index].lost.toDouble()));
+      dealerTakeSpots.add(FlSpot(index.toDouble(), dayTotals[index].dealerTake.toDouble()));
     }
 
     return Column(
@@ -2273,7 +2346,7 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Gifted: $giftedCount (R${giftedValue.toStringAsFixed(2)}) • Lost: $lostCount (R${lostValue.toStringAsFixed(2)})',
+                  'Gifted: $giftedCount (R${giftedValue.toStringAsFixed(2)}) • Lost: $lostCount (R${lostValue.toStringAsFixed(2)}) • Dealer-taken: $dealerTakeCount (R${dealerTakeValue.toStringAsFixed(2)})',
                 ),
               ),
               const SizedBox(height: 8),
@@ -2313,6 +2386,13 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
                                       color: Theme.of(context).colorScheme.error,
                                       dotData: const FlDotData(show: false),
                                     ),
+                                    LineChartBarData(
+                                      spots: dealerTakeSpots,
+                                      isCurved: false,
+                                      barWidth: 3,
+                                      color: Theme.of(context).colorScheme.tertiary,
+                                      dotData: const FlDotData(show: false),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -2340,6 +2420,12 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
                                       title: '$lostCount',
                                       radius: 50,
                                     ),
+                                    PieChartSectionData(
+                                      value: math.max(dealerTakeCount.toDouble(), 0.0001),
+                                      color: Theme.of(context).colorScheme.tertiary,
+                                      title: '$dealerTakeCount',
+                                      radius: 50,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -2353,6 +2439,8 @@ class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
                                   Text('Gifted qty: $giftedCount'),
                                   const SizedBox(height: 6),
                                   Text('Lost qty: $lostCount'),
+                                  const SizedBox(height: 6),
+                                  Text('Dealer-taken qty: $dealerTakeCount'),
                                 ],
                               ),
                             ),
@@ -2737,6 +2825,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
           getStockAdditions: () => _data.stockAdditions,
           getGiftEntries: () => _data.gifts,
           getLostStockEntries: () => _data.lostStock,
+          getDealerTakeEntries: () => _data.dealerTakes,
+          getDealers: () => _sortedDealers(_data.dealers),
           lowStockThreshold: _data.settings.lowStockThreshold,
           canUndoStockAction: _canUndoStockAction,
           onUndoStockAction: _undoLastStockAction,
@@ -2744,6 +2834,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           onAddStockItem: _addStockItem,
           onIncreaseStockCount: _increaseStockCount,
           onRecordLostStock: _recordLostStock,
+          onRecordDealerTake: _recordDealerTake,
         ),
       ),
     );
@@ -2877,7 +2968,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
     );
     final usedInSales = _data.sales.any((sale) => sale.dealerId == dealerId);
     final usedInGifts = _data.gifts.any((gift) => gift.dealerId == dealerId);
-    if (usedInTicks || usedInSales || usedInGifts) {
+    final usedInDealerTakes = _data.dealerTakes.any((entry) => entry.dealerId == dealerId);
+    if (usedInTicks || usedInSales || usedInGifts || usedInDealerTakes) {
       return false;
     }
 
@@ -3139,6 +3231,49 @@ class _CustomersScreenState extends State<CustomersScreen> {
             .map(
               (item) => item.id == stockItem.id
                   ? item.copyWith(currentCount: item.currentCount - quantityLost)
+                  : item,
+            )
+            .toList(),
+      );
+    });
+    await _save();
+    return true;
+  }
+
+  Future<bool> _recordDealerTake({
+    required String dealerId,
+    required String stockItemId,
+    required int quantityTaken,
+  }) async {
+    final stockItem = _stockItemById(stockItemId);
+    if (stockItem == null || quantityTaken <= 0 || stockItem.currentCount < quantityTaken) {
+      return false;
+    }
+
+    final dealerExists = _data.dealers.any((dealer) => dealer.id == dealerId);
+    if (!dealerExists) {
+      return false;
+    }
+
+    final take = DealerTakeEntry(
+      id: _uuid.v4(),
+      dealerId: dealerId,
+      stockItemId: stockItem.id,
+      itemName: stockItem.name,
+      stockType: stockItem.stockType,
+      itemPrice: stockItem.price,
+      quantity: quantityTaken,
+      createdAt: DateTime.now(),
+    );
+
+    _captureUndo('Recorded dealer take');
+    setState(() {
+      _data = _data.copyWith(
+        dealerTakes: [..._data.dealerTakes, take],
+        stockItems: _data.stockItems
+            .map(
+              (item) => item.id == stockItem.id
+                  ? item.copyWith(currentCount: item.currentCount - quantityTaken)
                   : item,
             )
             .toList(),
@@ -3466,7 +3601,7 @@ class _DealersScreenState extends State<DealersScreen> {
                           if (!removed) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Dealer cannot be removed if sales/ticks/gifts exist.'),
+                                content: Text('Dealer cannot be removed if sales/ticks/gifts/dealer-take records exist.'),
                               ),
                             );
                           }
@@ -3536,6 +3671,8 @@ class StockScreen extends StatefulWidget {
     required this.getStockAdditions,
     required this.getGiftEntries,
     required this.getLostStockEntries,
+    required this.getDealerTakeEntries,
+    required this.getDealers,
     required this.lowStockThreshold,
     required this.canUndoStockAction,
     required this.onUndoStockAction,
@@ -3543,6 +3680,7 @@ class StockScreen extends StatefulWidget {
     required this.onAddStockItem,
     required this.onIncreaseStockCount,
     required this.onRecordLostStock,
+    required this.onRecordDealerTake,
   });
 
   final List<StockItem> Function() getStockItems;
@@ -3550,6 +3688,8 @@ class StockScreen extends StatefulWidget {
   final List<StockAdditionEntry> Function() getStockAdditions;
   final List<GiftEntry> Function() getGiftEntries;
   final List<LostStockEntry> Function() getLostStockEntries;
+  final List<DealerTakeEntry> Function() getDealerTakeEntries;
+  final List<Dealer> Function() getDealers;
   final int lowStockThreshold;
   final bool Function() canUndoStockAction;
   final Future<void> Function() onUndoStockAction;
@@ -3568,6 +3708,11 @@ class StockScreen extends StatefulWidget {
     required String stockItemId,
     required int quantityLost,
   }) onRecordLostStock;
+  final Future<bool> Function({
+    required String dealerId,
+    required String stockItemId,
+    required int quantityTaken,
+  }) onRecordDealerTake;
 
   @override
   State<StockScreen> createState() => _StockScreenState();
@@ -3949,11 +4094,165 @@ class _StockScreenState extends State<StockScreen> {
     setState(() {});
   }
 
+  Future<void> _showDealerTakeDialog() async {
+    final stockItems = widget.getStockItems().where((item) => item.currentCount > 0).toList();
+    final dealers = widget.getDealers();
+    if (stockItems.isEmpty || dealers.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Need available stock and at least one dealer.')),
+      );
+      return;
+    }
+
+    String selectedStockItemId = stockItems.first.id;
+    String selectedDealerId = dealers.first.id;
+    final quantityController = TextEditingController();
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        final media = MediaQuery.of(context);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                bottom: math.max(media.viewInsets.bottom, media.viewPadding.bottom),
+              ),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  math.max(14, media.viewPadding.bottom + 14),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Record dealer stock take', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedDealerId,
+                      decoration: const InputDecoration(labelText: 'Dealer'),
+                      items: dealers
+                          .map(
+                            (dealer) => DropdownMenuItem<String>(
+                              value: dealer.id,
+                              child: Text('ID ${dealer.dealerNumber} - ${dealer.name}'),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setDialogState(() {
+                          selectedDealerId = value;
+                        });
+                      },
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedStockItemId,
+                      decoration: const InputDecoration(labelText: 'Stock item'),
+                      items: stockItems
+                          .map(
+                            (item) => DropdownMenuItem<String>(
+                              value: item.id,
+                              child: Text(
+                                '${item.stockType} • ${item.name} (Qty: ${item.currentCount})',
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setDialogState(() {
+                          selectedStockItemId = value;
+                        });
+                      },
+                    ),
+                    TextField(
+                      controller: quantityController,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      scrollPadding: const EdgeInsets.only(bottom: 220),
+                      decoration: const InputDecoration(labelText: 'Quantity taken'),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final quantityTaken = int.tryParse(quantityController.text.trim());
+    if (quantityTaken == null || quantityTaken <= 0) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid quantity greater than 0.')),
+      );
+      return;
+    }
+
+    final success = await widget.onRecordDealerTake(
+      dealerId: selectedDealerId,
+      stockItemId: selectedStockItemId,
+      quantityTaken: quantityTaken,
+    );
+
+    if (!mounted) {
+      return;
+    }
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not record dealer take for that quantity.')),
+      );
+      return;
+    }
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final stockItems = widget.getStockItems();
     final gifts = widget.getGiftEntries();
     final lostEntries = widget.getLostStockEntries();
+    final dealerTakes = widget.getDealerTakeEntries();
     final lowItems = stockItems
         .where((item) => item.currentCount <= widget.lowStockThreshold)
         .toList();
@@ -3985,6 +4284,11 @@ class _StockScreenState extends State<StockScreen> {
             icon: const Icon(Icons.category),
             tooltip: 'Add stock type',
           ),
+          IconButton(
+            onPressed: _showDealerTakeDialog,
+            icon: const Icon(Icons.person_remove_alt_1),
+            tooltip: 'Record dealer take',
+          ),
         ],
       ),
       body: stockItems.isEmpty
@@ -4007,12 +4311,15 @@ class _StockScreenState extends State<StockScreen> {
                   final lostCount = lostEntries
                       .where((entry) => entry.stockItemId == item.id)
                       .fold<int>(0, (sum, entry) => sum + entry.quantity);
+                  final dealerTakeCount = dealerTakes
+                      .where((entry) => entry.stockItemId == item.id)
+                      .fold<int>(0, (sum, entry) => sum + entry.quantity);
                   final isLow = item.currentCount <= widget.lowStockThreshold;
                   return ListTile(
                     leading: isLow ? const Icon(Icons.error_outline) : null,
                     title: Text('${item.stockType} • ${item.name} - R${item.price.toStringAsFixed(2)}'),
                     subtitle: Text(
-                      'Initial: ${item.initialCount} • Current: ${item.currentCount} • Used: ${item.soldCount} • Gifted: $giftedCount • Lost: $lostCount${isLow ? ' • LOW' : ''}',
+                      'Initial: ${item.initialCount} • Current: ${item.currentCount} • Used: ${item.soldCount} • Gifted: $giftedCount • Lost: $lostCount • Dealer-taken: $dealerTakeCount${isLow ? ' • LOW' : ''}',
                     ),
                     trailing: IconButton(
                       icon: const Icon(Icons.add_box_outlined),
@@ -4026,7 +4333,7 @@ class _StockScreenState extends State<StockScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _showLostStockDialog,
         tooltip: 'Record lost stock',
-        child: const Icon(Icons.add),
+        child: const Icon(Icons.remove),
       ),
       persistentFooterButtons: [
         FilledButton.icon(
