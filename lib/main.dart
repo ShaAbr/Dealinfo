@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as encrypted;
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -25,16 +28,53 @@ class DealInfoApp extends StatelessWidget {
     return MaterialApp(
       title: 'DealInfo',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        scaffoldBackgroundColor: const Color(0xFFEAF2F7),
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.white.withValues(alpha: 0.58),
+          foregroundColor: const Color(0xFF1D2A35),
+          elevation: 0,
+          centerTitle: true,
+        ),
+        cardTheme: CardThemeData(
+          color: Colors.white.withValues(alpha: 0.40),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          clipBehavior: Clip.antiAlias,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.45),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+        listTileTheme: ListTileThemeData(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 56),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(18)),
+          ),
+        ),
       ),
       builder: (context, child) {
         final mediaQuery = MediaQuery.of(context);
         return MediaQuery(
           data: mediaQuery.copyWith(
-            textScaler: const TextScaler.linear(1.5),
+            textScaler: const TextScaler.linear(1.3),
           ),
           child: DefaultTextStyle.merge(
-            style: const TextStyle(fontWeight: FontWeight.bold),
+            style: const TextStyle(fontWeight: FontWeight.w700),
             child: child ?? const SizedBox.shrink(),
           ),
         );
@@ -53,28 +93,60 @@ Future<String?> showNameDialog({
   String confirmLabel = 'Save',
 }) async {
   String value = initialValue;
-  final result = await showDialog<String>(
+  final result = await showModalBottomSheet<String>(
     context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (context) {
-      return AlertDialog(
-        title: Text(title),
-        content: TextFormField(
-          initialValue: initialValue,
-          autofocus: true,
-          obscureText: obscureText,
-          decoration: InputDecoration(hintText: hint),
-          onChanged: (text) => value = text,
+      final media = MediaQuery.of(context);
+      return AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+          bottom: math.max(media.viewInsets.bottom, media.viewPadding.bottom),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            math.max(14, media.viewPadding.bottom + 14),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(value.trim()),
-            child: Text(confirmLabel),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: initialValue,
+                autofocus: true,
+                obscureText: obscureText,
+                scrollPadding: const EdgeInsets.only(bottom: 180),
+                decoration: InputDecoration(hintText: hint),
+                onChanged: (text) => value = text,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(value.trim()),
+                      child: Text(confirmLabel),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       );
     },
   );
@@ -412,28 +484,38 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        clipBehavior: Clip.antiAlias,
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surface
-                              .withValues(alpha: 0.85),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Column(
-                          children: [
-                            Text('Current Seller'),
-                            const SizedBox(height: 4),
-                            Text(_dealerLabelById(_data.currentSalesDealerId)),
-                            const SizedBox(height: 4),
-                            Text(_dealerNameById(_data.currentSalesDealerId)),
-                            const SizedBox(height: 6),
-                            Text('Current Ticker'),
-                            const SizedBox(height: 4),
-                            Text(_dealerLabelById(_data.currentTickDealerId)),
-                            const SizedBox(height: 4),
-                            Text(_dealerNameById(_data.currentTickDealerId)),
-                          ],
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.30),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.35),
+                                width: 1.1,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Text('Current Seller'),
+                                const SizedBox(height: 4),
+                                Text(_dealerLabelById(_data.currentSalesDealerId)),
+                                const SizedBox(height: 4),
+                                Text(_dealerNameById(_data.currentSalesDealerId)),
+                                const SizedBox(height: 6),
+                                Text('Current Ticker'),
+                                const SizedBox(height: 4),
+                                Text(_dealerLabelById(_data.currentTickDealerId)),
+                                const SizedBox(height: 4),
+                                Text(_dealerNameById(_data.currentTickDealerId)),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -499,17 +581,28 @@ class HistoryScreen extends StatelessWidget {
     return '${weekDays[local.weekday - 1]} ${local.day}/${months[local.month - 1]}/${local.year}';
   }
 
+  String _stockTypeForSale(SaleEntry sale) {
+    for (final item in data.stockItems) {
+      if (item.id == sale.stockItemId) {
+        return item.stockType;
+      }
+    }
+    return 'Unknown';
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('History'),
           bottom: const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(text: 'Customers'),
               Tab(text: 'Dealers'),
+              Tab(text: 'Stock Types'),
             ],
           ),
         ),
@@ -524,6 +617,12 @@ class HistoryScreen extends StatelessWidget {
               data: data,
               dealerLabel: _dealerLabel,
               formatDate: _formatDate,
+            ),
+            _StockTypeHistoryTab(
+              data: data,
+              dealerLabel: _dealerLabel,
+              formatDate: _formatDate,
+              stockTypeForSale: _stockTypeForSale,
             ),
           ],
         ),
@@ -546,6 +645,296 @@ class _HistoryEvent {
 
 enum _HistorySortOrder { newest, oldest }
 
+class DealerStatData {
+  DealerStatData({
+    required this.dealerId,
+    required this.dealerNumber,
+    required this.dealerName,
+    required this.salesCount,
+    required this.tickCount,
+  });
+
+  final String dealerId;
+  final int dealerNumber;
+  final String dealerName;
+  final int salesCount;
+  final int tickCount;
+
+  String get label => 'ID $dealerNumber - $dealerName';
+}
+
+class _CustomerDayTotals {
+  _CustomerDayTotals({required this.day, required this.salesCount, required this.tickCount});
+
+  final DateTime day;
+  final int salesCount;
+  final int tickCount;
+}
+
+List<DealerStatData> buildDealerStats(AppData data) {
+  final dealers = [...data.dealers]..sort((a, b) => a.dealerNumber.compareTo(b.dealerNumber));
+  return dealers.map((dealer) {
+    final salesCount = data.sales.where((sale) => sale.dealerId == dealer.id).length;
+    final tickCount = data.customers
+        .map((customer) => customer.ticks.where((tick) => tick.dealerId == dealer.id).length)
+        .fold(0, (sum, value) => sum + value);
+    return DealerStatData(
+      dealerId: dealer.id,
+      dealerNumber: dealer.dealerNumber,
+      dealerName: dealer.name,
+      salesCount: salesCount,
+      tickCount: tickCount,
+    );
+  }).toList();
+}
+
+List<_CustomerDayTotals> _buildCustomerDayTotals(AppData data) {
+  final byDay = <String, _CustomerDayTotals>{};
+
+  for (final sale in data.sales) {
+    final day = DateTime(sale.createdAt.year, sale.createdAt.month, sale.createdAt.day);
+    final key = day.toIso8601String();
+    final existing = byDay[key];
+    byDay[key] = _CustomerDayTotals(
+      day: day,
+      salesCount: (existing?.salesCount ?? 0) + 1,
+      tickCount: existing?.tickCount ?? 0,
+    );
+  }
+
+  for (final customer in data.customers) {
+    for (final tick in customer.ticks) {
+      final day = DateTime(tick.createdAt.year, tick.createdAt.month, tick.createdAt.day);
+      final key = day.toIso8601String();
+      final existing = byDay[key];
+      byDay[key] = _CustomerDayTotals(
+        day: day,
+        salesCount: existing?.salesCount ?? 0,
+        tickCount: (existing?.tickCount ?? 0) + 1,
+      );
+    }
+  }
+
+  final list = byDay.values.toList()..sort((a, b) => a.day.compareTo(b.day));
+  return list;
+}
+
+class _CustomerHistoryCharts extends StatelessWidget {
+  const _CustomerHistoryCharts({required this.data});
+
+  final AppData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final dayTotals = _buildCustomerDayTotals(data);
+    final totalSales = data.sales.length;
+    final totalTicks = data.customers
+        .map((customer) => customer.ticks.length)
+        .fold(0, (sum, value) => sum + value);
+
+    final salesSpots = <FlSpot>[];
+    final tickSpots = <FlSpot>[];
+    for (var index = 0; index < dayTotals.length; index++) {
+      salesSpots.add(FlSpot(index.toDouble(), dayTotals[index].salesCount.toDouble()));
+      tickSpots.add(FlSpot(index.toDouble(), dayTotals[index].tickCount.toDouble()));
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('All Customers: Sales & Ticks'),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 170,
+              child: dayTotals.isEmpty
+                  ? const Center(child: Text('No chart data yet.'))
+                  : LineChart(
+                      LineChartData(
+                        minY: 0,
+                        gridData: const FlGridData(show: true),
+                        lineTouchData: const LineTouchData(enabled: false),
+                        titlesData: const FlTitlesData(
+                          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        ),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: salesSpots,
+                            isCurved: false,
+                            barWidth: 3,
+                            color: Theme.of(context).colorScheme.primary,
+                            dotData: const FlDotData(show: false),
+                          ),
+                          LineChartBarData(
+                            spots: tickSpots,
+                            isCurved: false,
+                            barWidth: 3,
+                            color: Theme.of(context).colorScheme.secondary,
+                            dotData: const FlDotData(show: false),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 170,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: PieChart(
+                      PieChartData(
+                        centerSpaceRadius: 30,
+                        sectionsSpace: 2,
+                        sections: [
+                          PieChartSectionData(
+                            value: math.max(totalSales.toDouble(), 0.0001),
+                            color: Theme.of(context).colorScheme.primary,
+                            title: '$totalSales',
+                            radius: 55,
+                          ),
+                          PieChartSectionData(
+                            value: math.max(totalTicks.toDouble(), 0.0001),
+                            color: Theme.of(context).colorScheme.secondary,
+                            title: '$totalTicks',
+                            radius: 55,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Sales Total: $totalSales'),
+                        const SizedBox(height: 8),
+                        Text('Ticks Total: $totalTicks'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DealerTotalsCharts extends StatelessWidget {
+  const _DealerTotalsCharts({required this.stats, this.title = 'Dealers: Totals'});
+
+  final List<DealerStatData> stats;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final salesTotal = stats.fold<int>(0, (sum, stat) => sum + stat.salesCount);
+    final ticksTotal = stats.fold<int>(0, (sum, stat) => sum + stat.tickCount);
+
+    final salesSpots = stats
+        .map((entry) => FlSpot(entry.dealerNumber.toDouble(), entry.salesCount.toDouble()))
+        .toList();
+    final tickSpots = stats
+        .map((entry) => FlSpot(entry.dealerNumber.toDouble(), entry.tickCount.toDouble()))
+        .toList();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 170,
+              child: stats.isEmpty
+                  ? const Center(child: Text('No chart data yet.'))
+                  : LineChart(
+                      LineChartData(
+                        minY: 0,
+                        gridData: const FlGridData(show: true),
+                        lineTouchData: const LineTouchData(enabled: false),
+                        titlesData: const FlTitlesData(
+                          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        ),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: salesSpots,
+                            isCurved: false,
+                            barWidth: 3,
+                            color: Theme.of(context).colorScheme.primary,
+                            dotData: const FlDotData(show: true),
+                          ),
+                          LineChartBarData(
+                            spots: tickSpots,
+                            isCurved: false,
+                            barWidth: 3,
+                            color: Theme.of(context).colorScheme.secondary,
+                            dotData: const FlDotData(show: true),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 170,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: PieChart(
+                      PieChartData(
+                        centerSpaceRadius: 30,
+                        sectionsSpace: 2,
+                        sections: [
+                          PieChartSectionData(
+                            value: math.max(salesTotal.toDouble(), 0.0001),
+                            color: Theme.of(context).colorScheme.primary,
+                            title: '$salesTotal',
+                            radius: 55,
+                          ),
+                          PieChartSectionData(
+                            value: math.max(ticksTotal.toDouble(), 0.0001),
+                            color: Theme.of(context).colorScheme.secondary,
+                            title: '$ticksTotal',
+                            radius: 55,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Sold Total: $salesTotal'),
+                        const SizedBox(height: 8),
+                        Text('Ticked Total: $ticksTotal'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CustomerHistoryTab extends StatefulWidget {
   const _CustomerHistoryTab({
     required this.data,
@@ -563,6 +952,26 @@ class _CustomerHistoryTab extends StatefulWidget {
 
 class _CustomerHistoryTabState extends State<_CustomerHistoryTab> {
   _HistorySortOrder _sortOrder = _HistorySortOrder.newest;
+  String _filterQuery = '';
+
+  bool _matchesFilter(Customer customer, List<_HistoryEvent> events) {
+    final query = _filterQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return true;
+    }
+
+    if (customer.name.toLowerCase().contains(query)) {
+      return true;
+    }
+
+    for (final event in events) {
+      if (event.type.toLowerCase().contains(query) ||
+          event.detail.toLowerCase().contains(query)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   List<_HistoryEvent> _eventsForCustomer(Customer customer) {
     final events = <_HistoryEvent>[];
@@ -573,7 +982,8 @@ class _CustomerHistoryTabState extends State<_CustomerHistoryTab> {
         _HistoryEvent(
           type: 'Sale',
           date: sale.createdAt,
-          detail: widget.dealerLabel(sale.dealerId),
+          detail:
+              '${widget.dealerLabel(sale.dealerId)} • ${sale.itemName} • R${sale.itemPrice.toStringAsFixed(2)}',
         ),
       );
     }
@@ -583,7 +993,8 @@ class _CustomerHistoryTabState extends State<_CustomerHistoryTab> {
         _HistoryEvent(
           type: tick.isPaid ? 'Tick (Paid)' : 'Tick (Not paid)',
           date: tick.createdAt,
-          detail: widget.dealerLabel(tick.dealerId),
+          detail:
+              '${widget.dealerLabel(tick.dealerId)} • ${tick.stockType} • ${tick.itemName} • R${tick.itemPrice.toStringAsFixed(2)}',
         ),
       );
     }
@@ -603,41 +1014,69 @@ class _CustomerHistoryTabState extends State<_CustomerHistoryTab> {
       return const Center(child: Text('No customer history yet.'));
     }
 
+    final filteredCustomers = widget.data.customers.where((customer) {
+      final events = _eventsForCustomer(customer);
+      return _matchesFilter(customer, events);
+    }).toList();
+
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-          child: Row(
+          child: Column(
             children: [
-              const Text('Sort:'),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Newest'),
-                selected: _sortOrder == _HistorySortOrder.newest,
-                onSelected: (_) {
-                  setState(() {
-                    _sortOrder = _HistorySortOrder.newest;
-                  });
-                },
+              Row(
+                children: [
+                  const Text('Sort:'),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Newest'),
+                    selected: _sortOrder == _HistorySortOrder.newest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.newest;
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Oldest'),
+                    selected: _sortOrder == _HistorySortOrder.oldest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.oldest;
+                      });
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Oldest'),
-                selected: _sortOrder == _HistorySortOrder.oldest,
-                onSelected: (_) {
+              const SizedBox(height: 8),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Filter by customer/dealer',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) {
                   setState(() {
-                    _sortOrder = _HistorySortOrder.oldest;
+                    _filterQuery = value;
                   });
                 },
               ),
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: _CustomerHistoryCharts(data: widget.data),
+        ),
+        const SizedBox(height: 6),
         Expanded(
-          child: ListView.builder(
-      itemCount: widget.data.customers.length,
+          child: filteredCustomers.isEmpty
+              ? const Center(child: Text('No matching customer history.'))
+              : ListView.builder(
+      itemCount: filteredCustomers.length,
       itemBuilder: (context, index) {
-        final customer = widget.data.customers[index];
+        final customer = filteredCustomers[index];
         final customerSales = widget.data.sales.where((sale) => sale.customerId == customer.id).length;
         final customerTicks = customer.ticks.length;
         final events = _eventsForCustomer(customer);
@@ -684,6 +1123,31 @@ class _DealerHistoryTab extends StatefulWidget {
 
 class _DealerHistoryTabState extends State<_DealerHistoryTab> {
   _HistorySortOrder _sortOrder = _HistorySortOrder.newest;
+  String _filterQuery = '';
+
+  List<DealerStatData> _dealerStats() {
+    return buildDealerStats(widget.data);
+  }
+
+  bool _matchesFilter(Dealer dealer, List<_HistoryEvent> events) {
+    final query = _filterQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return true;
+    }
+
+    final dealerLabel = widget.dealerLabel(dealer.id).toLowerCase();
+    if (dealerLabel.contains(query) || dealer.name.toLowerCase().contains(query)) {
+      return true;
+    }
+
+    for (final event in events) {
+      if (event.type.toLowerCase().contains(query) ||
+          event.detail.toLowerCase().contains(query)) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   List<_HistoryEvent> _eventsForDealer(Dealer dealer) {
     final events = <_HistoryEvent>[];
@@ -695,7 +1159,7 @@ class _DealerHistoryTabState extends State<_DealerHistoryTab> {
         _HistoryEvent(
           type: 'Sale',
           date: sale.createdAt,
-          detail: customerName,
+          detail: '$customerName • ${sale.itemName} • R${sale.itemPrice.toStringAsFixed(2)}',
         ),
       );
     }
@@ -706,7 +1170,8 @@ class _DealerHistoryTabState extends State<_DealerHistoryTab> {
           _HistoryEvent(
             type: tick.isPaid ? 'Tick (Paid)' : 'Tick (Not paid)',
             date: tick.createdAt,
-            detail: customer.name,
+            detail:
+                '${customer.name} • ${tick.stockType} • ${tick.itemName} • R${tick.itemPrice.toStringAsFixed(2)}',
           ),
         );
       }
@@ -728,51 +1193,84 @@ class _DealerHistoryTabState extends State<_DealerHistoryTab> {
     }
 
     final dealers = [...widget.data.dealers]..sort((a, b) => a.dealerNumber.compareTo(b.dealerNumber));
+    final filteredDealers = dealers.where((dealer) {
+      final events = _eventsForDealer(dealer);
+      return _matchesFilter(dealer, events);
+    }).toList();
 
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-          child: Row(
+          child: Column(
             children: [
-              const Text('Sort:'),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Newest'),
-                selected: _sortOrder == _HistorySortOrder.newest,
-                onSelected: (_) {
-                  setState(() {
-                    _sortOrder = _HistorySortOrder.newest;
-                  });
-                },
+              Row(
+                children: [
+                  const Text('Sort:'),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Newest'),
+                    selected: _sortOrder == _HistorySortOrder.newest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.newest;
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Oldest'),
+                    selected: _sortOrder == _HistorySortOrder.oldest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.oldest;
+                      });
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Oldest'),
-                selected: _sortOrder == _HistorySortOrder.oldest,
-                onSelected: (_) {
+              const SizedBox(height: 8),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Filter by dealer/customer',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) {
                   setState(() {
-                    _sortOrder = _HistorySortOrder.oldest;
+                    _filterQuery = value;
                   });
                 },
               ),
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: _DealerTotalsCharts(stats: _dealerStats()),
+        ),
+        const SizedBox(height: 6),
         Expanded(
-          child: ListView.builder(
-      itemCount: dealers.length,
+          child: filteredDealers.isEmpty
+              ? const Center(child: Text('No matching dealer history.'))
+              : ListView.builder(
+      itemCount: filteredDealers.length,
       itemBuilder: (context, index) {
-        final dealer = dealers[index];
-        final salesCount = widget.data.sales.where((sale) => sale.dealerId == dealer.id).length;
-        final tickCount = widget.data.customers
-            .map((customer) => customer.ticks.where((tick) => tick.dealerId == dealer.id).length)
-            .fold(0, (sum, value) => sum + value);
+        final dealer = filteredDealers[index];
+        final dealerStat = _dealerStats().firstWhere(
+          (entry) => entry.dealerId == dealer.id,
+          orElse: () => DealerStatData(
+            dealerId: dealer.id,
+            dealerNumber: dealer.dealerNumber,
+            dealerName: dealer.name,
+            salesCount: 0,
+            tickCount: 0,
+          ),
+        );
         final events = _eventsForDealer(dealer);
 
         return ExpansionTile(
           title: Text(widget.dealerLabel(dealer.id)),
-          subtitle: Text('Sales: $salesCount • Ticks: $tickCount'),
+          subtitle: Text('Sales: ${dealerStat.salesCount} • Ticks: ${dealerStat.tickCount}'),
           children: events.isEmpty
               ? const [
                   ListTile(title: Text('No records yet.')),
@@ -789,6 +1287,210 @@ class _DealerHistoryTabState extends State<_DealerHistoryTab> {
         );
       },
     ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StockTypeHistoryTab extends StatefulWidget {
+  const _StockTypeHistoryTab({
+    required this.data,
+    required this.dealerLabel,
+    required this.formatDate,
+    required this.stockTypeForSale,
+  });
+
+  final AppData data;
+  final String Function(String dealerId) dealerLabel;
+  final String Function(DateTime dateTime) formatDate;
+  final String Function(SaleEntry sale) stockTypeForSale;
+
+  @override
+  State<_StockTypeHistoryTab> createState() => _StockTypeHistoryTabState();
+}
+
+class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
+  _HistorySortOrder _sortOrder = _HistorySortOrder.newest;
+  String _filterQuery = '';
+
+  bool _matchesFilter(String stockType, List<_HistoryEvent> events) {
+    final query = _filterQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return true;
+    }
+
+    if (stockType.toLowerCase().contains(query)) {
+      return true;
+    }
+
+    for (final event in events) {
+      if (event.type.toLowerCase().contains(query) ||
+          event.detail.toLowerCase().contains(query)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  List<String> _types() {
+    final fromSettings = widget.data.stockTypes;
+    final fromItems = widget.data.stockItems.map((item) => item.stockType);
+    final fromTicks = widget.data.customers.expand((customer) => customer.ticks.map((tick) => tick.stockType));
+    final fromSales = widget.data.sales.map(widget.stockTypeForSale);
+
+    final all = <String>{
+      ...fromSettings,
+      ...fromItems,
+      ...fromTicks,
+      ...fromSales,
+    };
+
+    final cleaned = all.where((type) => type.trim().isNotEmpty).toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return cleaned;
+  }
+
+  List<_HistoryEvent> _eventsForType(String stockType) {
+    final events = <_HistoryEvent>[];
+
+    for (final sale in widget.data.sales) {
+      if (widget.stockTypeForSale(sale) != stockType) {
+        continue;
+      }
+      final customer = widget.data.customers.where((entry) => entry.id == sale.customerId).toList();
+      final customerName = customer.isEmpty ? 'Unknown customer' : customer.first.name;
+      events.add(
+        _HistoryEvent(
+          type: 'Sale',
+          date: sale.createdAt,
+          detail:
+              '$customerName • ${widget.dealerLabel(sale.dealerId)} • ${sale.itemName} • R${sale.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
+    for (final customer in widget.data.customers) {
+      for (final tick in customer.ticks.where((entry) => entry.stockType == stockType)) {
+        events.add(
+          _HistoryEvent(
+            type: tick.isPaid ? 'Tick (Paid)' : 'Tick (Not paid)',
+            date: tick.createdAt,
+            detail:
+                '${customer.name} • ${widget.dealerLabel(tick.dealerId)} • ${tick.itemName} • R${tick.itemPrice.toStringAsFixed(2)}',
+          ),
+        );
+      }
+    }
+
+    events.sort((a, b) {
+      if (_sortOrder == _HistorySortOrder.newest) {
+        return b.date.compareTo(a.date);
+      }
+      return a.date.compareTo(b.date);
+    });
+    return events;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final types = _types();
+    if (types.isEmpty) {
+      return const Center(child: Text('No stock type history yet.'));
+    }
+
+    final filteredTypes = types.where((type) {
+      final events = _eventsForType(type);
+      return _matchesFilter(type, events);
+    }).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const Text('Sort:'),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Newest'),
+                    selected: _sortOrder == _HistorySortOrder.newest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.newest;
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Oldest'),
+                    selected: _sortOrder == _HistorySortOrder.oldest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.oldest;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Filter by type/dealer/customer',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _filterQuery = value;
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: filteredTypes.isEmpty
+              ? const Center(child: Text('No matching stock type history.'))
+              : ListView.builder(
+            itemCount: filteredTypes.length,
+            itemBuilder: (context, index) {
+              final type = filteredTypes[index];
+              final saleCount = widget.data.sales.where((sale) => widget.stockTypeForSale(sale) == type).length;
+              final tickCount = widget.data.customers
+                  .map((customer) => customer.ticks.where((tick) => tick.stockType == type).length)
+                  .fold(0, (sum, value) => sum + value);
+              final saleValue = widget.data.sales
+                  .where((sale) => widget.stockTypeForSale(sale) == type)
+                  .fold<double>(0, (sum, sale) => sum + sale.itemPrice);
+              final tickValue = widget.data.customers
+                  .expand((customer) => customer.ticks)
+                  .where((tick) => tick.stockType == type)
+                  .fold<double>(0, (sum, tick) => sum + tick.itemPrice);
+              final events = _eventsForType(type);
+
+              return ExpansionTile(
+                title: Text(type),
+                subtitle: Text(
+                  'Sales: $saleCount (R${saleValue.toStringAsFixed(2)}) • Ticks: $tickCount (R${tickValue.toStringAsFixed(2)})',
+                ),
+                children: events.isEmpty
+                    ? const [
+                        ListTile(title: Text('No records yet.')),
+                      ]
+                    : events
+                        .map(
+                          (event) => ListTile(
+                            title: Text(event.type),
+                            subtitle: Text('${event.detail}\n${widget.formatDate(event.date)}'),
+                            isThreeLine: true,
+                          ),
+                        )
+                        .toList(),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -953,6 +1655,146 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   Future<void> _save() async {
     await _repository.saveData(_data);
+  }
+
+  List<StockItem> _sortedStockItems(List<StockItem> items) {
+    final sorted = [...items]
+      ..sort((a, b) {
+        final typeCompare = a.stockType.toLowerCase().compareTo(b.stockType.toLowerCase());
+        if (typeCompare != 0) {
+          return typeCompare;
+        }
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+    return sorted;
+  }
+
+  StockItem? _stockItemById(String stockItemId) {
+    for (final item in _data.stockItems) {
+      if (item.id == stockItemId) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  List<String> _stockTypes() {
+    final types = {
+      ..._data.stockTypes,
+      ..._data.stockItems.map((item) => item.stockType.trim()),
+    }.where((type) => type.isNotEmpty).toList();
+    types.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return types;
+  }
+
+  Future<void> _addStockType(String stockType) async {
+    final cleaned = stockType.trim();
+    if (cleaned.isEmpty) {
+      return;
+    }
+
+    final exists = _stockTypes().any((type) => type.toLowerCase() == cleaned.toLowerCase());
+    if (exists) {
+      return;
+    }
+
+    setState(() {
+      _data = _data.copyWith(stockTypes: [..._data.stockTypes, cleaned]);
+    });
+    await _save();
+  }
+
+  Future<void> _addStockItem({
+    required String stockType,
+    required String name,
+    required double price,
+    required int initialCount,
+  }) async {
+    final item = StockItem(
+      id: _uuid.v4(),
+      stockType: stockType.trim(),
+      name: name.trim(),
+      price: price,
+      initialCount: initialCount,
+      currentCount: initialCount,
+    );
+
+    setState(() {
+      final nextTypes = {..._data.stockTypes, stockType.trim()}.toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      _data = _data.copyWith(
+        stockTypes: nextTypes,
+        stockItems: [..._data.stockItems, item],
+        stockAdditions: [
+          ..._data.stockAdditions,
+          StockAdditionEntry(
+            id: _uuid.v4(),
+            stockItemId: item.id,
+            stockType: item.stockType,
+            itemName: item.name,
+            quantityAdded: initialCount,
+            addedAt: DateTime.now(),
+          ),
+        ],
+      );
+    });
+    await _save();
+  }
+
+  Future<void> _increaseStockCount({
+    required String stockItemId,
+    required int addCount,
+  }) async {
+    final stockItem = _stockItemById(stockItemId);
+    if (stockItem == null) {
+      return;
+    }
+
+    setState(() {
+      _data = _data.copyWith(
+        stockItems: _data.stockItems
+            .map(
+              (item) => item.id == stockItemId
+                  ? item.copyWith(
+                      initialCount: item.initialCount + addCount,
+                      currentCount: item.currentCount + addCount,
+                    )
+                  : item,
+            )
+            .toList(),
+        stockAdditions: [
+          ..._data.stockAdditions,
+          StockAdditionEntry(
+            id: _uuid.v4(),
+            stockItemId: stockItem.id,
+            stockType: stockItem.stockType,
+            itemName: stockItem.name,
+            quantityAdded: addCount,
+            addedAt: DateTime.now(),
+          ),
+        ],
+      );
+    });
+    await _save();
+  }
+
+  Future<void> _openStockScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => StockScreen(
+          getStockItems: () => _sortedStockItems(_data.stockItems),
+          getStockTypes: _stockTypes,
+          getStockAdditions: () => _data.stockAdditions,
+          onAddStockType: _addStockType,
+          onAddStockItem: _addStockItem,
+          onIncreaseStockCount: _increaseStockCount,
+        ),
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
   }
 
   Dealer? _dealerById(String? dealerId) {
@@ -1227,9 +2069,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return true;
   }
 
-  Future<String?> _recordSale(String customerId) async {
+  Future<String?> _recordSale(String customerId, String stockItemId) async {
     final dealers = _sortedDealers(_data.dealers);
     if (dealers.isEmpty) {
+      return null;
+    }
+
+    final stockItem = _stockItemById(stockItemId);
+    if (stockItem == null || stockItem.currentCount <= 0) {
       return null;
     }
 
@@ -1240,12 +2087,22 @@ class _CustomersScreenState extends State<CustomersScreen> {
       id: _uuid.v4(),
       customerId: customerId,
       dealerId: activeDealer.id,
+      stockItemId: stockItem.id,
+      itemName: stockItem.name,
+      itemPrice: stockItem.price,
       createdAt: DateTime.now(),
     );
 
     setState(() {
       _data = _data.copyWith(
         sales: [..._data.sales, sale],
+        stockItems: _data.stockItems
+            .map(
+              (item) => item.id == stockItem.id
+                  ? item.copyWith(currentCount: item.currentCount - 1)
+                  : item,
+            )
+            .toList(),
         currentSalesDealerId: nextId,
       );
     });
@@ -1253,9 +2110,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return _dealerLabelById(activeDealer.id);
   }
 
-  Future<String?> _recordTick(String customerId, bool isPaid) async {
+  Future<String?> _recordTick(String customerId, bool isPaid, String stockItemId) async {
     final dealers = _sortedDealers(_data.dealers);
     if (dealers.isEmpty) {
+      return null;
+    }
+
+    final stockItem = _stockItemById(stockItemId);
+    if (stockItem == null || stockItem.currentCount <= 0) {
       return null;
     }
 
@@ -1274,6 +2136,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
         TickEntry(
           id: _uuid.v4(),
           dealerId: activeDealer.id,
+          stockItemId: stockItem.id,
+          itemName: stockItem.name,
+          itemPrice: stockItem.price,
+          stockType: stockItem.stockType,
           createdAt: DateTime.now(),
           isPaid: isPaid,
         ),
@@ -1286,6 +2152,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
     setState(() {
       _data = _data.copyWith(
         customers: updatedCustomers,
+        stockItems: _data.stockItems
+            .map(
+              (item) => item.id == stockItem.id
+                  ? item.copyWith(currentCount: item.currentCount - 1)
+                  : item,
+            )
+            .toList(),
         currentTickDealerId: nextId,
       );
     });
@@ -1298,6 +2171,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       MaterialPageRoute(
         builder: (context) => DealersScreen(
           getDealers: () => _sortedDealers(_data.dealers),
+          getDealerStats: () => buildDealerStats(_data),
           imagePassword: _data.settings.password,
           onAddDealer: _addDealer,
           onEditDealer: _editDealerName,
@@ -1333,6 +2207,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
       appBar: AppBar(
         title: const Text('Customers'),
         actions: [
+          IconButton(
+            onPressed: _openStockScreen,
+            icon: const Icon(Icons.inventory_2),
+            tooltip: 'Stock',
+          ),
           IconButton(
             onPressed: _openDealersScreen,
             icon: const Icon(Icons.groups),
@@ -1386,11 +2265,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                 getSalesForCustomer: () => _salesForCustomer(customer.id),
                                 imagePassword: _data.settings.password,
                                 dealerLabelById: _dealerLabelById,
+                                getStockItems: () => _sortedStockItems(_data.stockItems),
                                 getCurrentSalesDealerLabel: _currentSalesDealerLabel,
                                 getCurrentTickDealerLabel: _currentTickDealerLabel,
                                 canEditTickStatus: _canEditTickStatus,
-                                onAddTick: (isPaid) => _recordTick(customer.id, isPaid),
-                                onRecordSale: () => _recordSale(customer.id),
+                                onAddTick: (isPaid, stockItemId) =>
+                                  _recordTick(customer.id, isPaid, stockItemId),
+                                onRecordSale: (stockItemId) =>
+                                  _recordSale(customer.id, stockItemId),
                                 onUpdateTickPaidStatus: ({required tickId, required isPaid}) =>
                                     _updateTickPaidStatus(
                                   customerId: customer.id,
@@ -1432,6 +2314,7 @@ class DealersScreen extends StatefulWidget {
   const DealersScreen({
     super.key,
     required this.getDealers,
+    required this.getDealerStats,
     required this.imagePassword,
     required this.onAddDealer,
     required this.onEditDealer,
@@ -1440,6 +2323,7 @@ class DealersScreen extends StatefulWidget {
   });
 
   final List<Dealer> Function() getDealers;
+  final List<DealerStatData> Function() getDealerStats;
   final String? imagePassword;
   final Future<void> Function(String name) onAddDealer;
   final Future<void> Function({required String dealerId, required String name}) onEditDealer;
@@ -1466,7 +2350,22 @@ class _DealersScreenState extends State<DealersScreen> {
   Widget build(BuildContext context) {
     final dealers = widget.getDealers();
     return Scaffold(
-      appBar: AppBar(title: const Text('Dealers')),
+      appBar: AppBar(
+        title: const Text('Dealers'),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => DealerStatsScreen(stats: widget.getDealerStats()),
+                ),
+              );
+            },
+            icon: const Icon(Icons.bar_chart),
+            tooltip: 'Dealer stats',
+          ),
+        ],
+      ),
       body: dealers.isEmpty
           ? const Center(child: Text('No dealers yet. Add one with +'))
           : ListView.builder(
@@ -1548,6 +2447,608 @@ class _DealersScreenState extends State<DealersScreen> {
   }
 }
 
+class DealerStatsScreen extends StatelessWidget {
+  const DealerStatsScreen({super.key, required this.stats});
+
+  final List<DealerStatData> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Dealer Stats')),
+      body: stats.isEmpty
+          ? const Center(child: Text('No dealer stats yet.'))
+          : ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                _DealerTotalsCharts(stats: stats, title: 'Dealer Stats: Sold vs Ticked'),
+                const SizedBox(height: 8),
+                ...stats.map(
+                  (entry) => Card(
+                    child: ListTile(
+                      title: Text(entry.label),
+                      subtitle: Text('Sold: ${entry.salesCount} • Ticked: ${entry.tickCount}'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class StockScreen extends StatefulWidget {
+  const StockScreen({
+    super.key,
+    required this.getStockItems,
+    required this.getStockTypes,
+    required this.getStockAdditions,
+    required this.onAddStockType,
+    required this.onAddStockItem,
+    required this.onIncreaseStockCount,
+  });
+
+  final List<StockItem> Function() getStockItems;
+  final List<String> Function() getStockTypes;
+  final List<StockAdditionEntry> Function() getStockAdditions;
+  final Future<void> Function(String stockType) onAddStockType;
+  final Future<void> Function({
+    required String stockType,
+    required String name,
+    required double price,
+    required int initialCount,
+  }) onAddStockItem;
+  final Future<void> Function({
+    required String stockItemId,
+    required int addCount,
+  }) onIncreaseStockCount;
+
+  @override
+  State<StockScreen> createState() => _StockScreenState();
+}
+
+class _StockScreenState extends State<StockScreen> {
+  Future<void> _showAddStockTypeDialog() async {
+    final type = await showNameDialog(
+      context: context,
+      title: 'Add stock type',
+      hint: 'Stock type (e.g. Tobacco)',
+    );
+    if (type == null) {
+      return;
+    }
+
+    await widget.onAddStockType(type);
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _showAddStockDialog() async {
+    final stockTypes = widget.getStockTypes();
+    if (stockTypes.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a stock type first.')),
+      );
+      return;
+    }
+
+    final nameController = TextEditingController();
+    final priceController = TextEditingController();
+    final countController = TextEditingController();
+    String selectedStockType = stockTypes.first;
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        final media = MediaQuery.of(context);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                bottom: math.max(media.viewInsets.bottom, media.viewPadding.bottom),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: media.size.height * 0.9),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    12,
+                    16,
+                    math.max(14, media.viewPadding.bottom + 14),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Add stock item', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedStockType,
+                        decoration: const InputDecoration(labelText: 'Stock type'),
+                        items: stockTypes
+                            .map(
+                              (type) => DropdownMenuItem<String>(
+                                value: type,
+                                child: Text(type),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setDialogState(() {
+                            selectedStockType = value;
+                          });
+                        },
+                      ),
+                      TextField(
+                        controller: nameController,
+                        autofocus: true,
+                        scrollPadding: const EdgeInsets.only(bottom: 240),
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(labelText: 'Item name'),
+                      ),
+                      TextField(
+                        controller: priceController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        scrollPadding: const EdgeInsets.only(bottom: 240),
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(labelText: 'Price'),
+                      ),
+                      TextField(
+                        controller: countController,
+                        keyboardType: TextInputType.number,
+                        scrollPadding: const EdgeInsets.only(bottom: 240),
+                        textInputAction: TextInputAction.done,
+                        decoration: const InputDecoration(labelText: 'Initial count'),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Save'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final name = nameController.text.trim();
+    final price = double.tryParse(priceController.text.trim());
+    final count = int.tryParse(countController.text.trim());
+
+    if (name.isEmpty || price == null || count == null || count <= 0 || price < 0) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter valid item name, price, and count.')),
+      );
+      return;
+    }
+
+    await widget.onAddStockItem(
+      stockType: selectedStockType,
+      name: name,
+      price: price,
+      initialCount: count,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _showIncreaseStockDialog(StockItem item) async {
+    final countController = TextEditingController();
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        final media = MediaQuery.of(context);
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(
+            bottom: math.max(media.viewInsets.bottom, media.viewPadding.bottom),
+          ),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              math.max(14, media.viewPadding.bottom + 14),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Add count to ${item.name}', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: countController,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  scrollPadding: const EdgeInsets.only(bottom: 180),
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(labelText: 'Add count'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('Add'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final addCount = int.tryParse(countController.text.trim());
+    if (addCount == null || addCount <= 0) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid count greater than 0.')),
+      );
+      return;
+    }
+
+    await widget.onIncreaseStockCount(stockItemId: item.id, addCount: addCount);
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stockItems = widget.getStockItems();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Stock'),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => StockAdditionGraphsScreen(
+                    additions: widget.getStockAdditions(),
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.show_chart),
+            tooltip: 'Stock addition graphs',
+          ),
+          IconButton(
+            onPressed: _showAddStockTypeDialog,
+            icon: const Icon(Icons.category),
+            tooltip: 'Add stock type',
+          ),
+        ],
+      ),
+      body: stockItems.isEmpty
+          ? const Center(child: Text('No stock items yet. Add one with +'))
+          : ListView.builder(
+              itemCount: stockItems.length,
+              itemBuilder: (context, index) {
+                final item = stockItems[index];
+                return ListTile(
+                  title: Text('${item.stockType} • ${item.name} - R${item.price.toStringAsFixed(2)}'),
+                  subtitle: Text(
+                    'Initial: ${item.initialCount} • Current: ${item.currentCount} • Sold: ${item.soldCount}',
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.add_box_outlined),
+                    tooltip: 'Add stock count',
+                    onPressed: () => _showIncreaseStockDialog(item),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddStockDialog,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class StockAdditionGraphsScreen extends StatefulWidget {
+  const StockAdditionGraphsScreen({super.key, required this.additions});
+
+  final List<StockAdditionEntry> additions;
+
+  @override
+  State<StockAdditionGraphsScreen> createState() => _StockAdditionGraphsScreenState();
+}
+
+class _StockAdditionGraphsScreenState extends State<StockAdditionGraphsScreen> {
+  String? _highlightedSectionId;
+
+  String? _selectedItemForType(String stockType) {
+    final sectionId = _highlightedSectionId;
+    if (sectionId == null) {
+      return null;
+    }
+    final prefix = '$stockType::';
+    if (!sectionId.startsWith(prefix)) {
+      return null;
+    }
+    return sectionId.substring(prefix.length);
+  }
+
+  void _scrollToItem(GlobalKey targetKey) {
+    final targetContext = targetKey.currentContext;
+    if (targetContext == null) {
+      return;
+    }
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeInOut,
+      alignment: 0.1,
+    );
+  }
+
+  void _highlightSection(String sectionId) {
+    setState(() {
+      _highlightedSectionId = sectionId;
+    });
+
+    Future<void>.delayed(const Duration(milliseconds: 1100), () {
+      if (!mounted || _highlightedSectionId != sectionId) {
+        return;
+      }
+      setState(() {
+        _highlightedSectionId = null;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final byType = <String, List<StockAdditionEntry>>{};
+    for (final entry in widget.additions) {
+      byType.putIfAbsent(entry.stockType, () => []).add(entry);
+    }
+
+    final sortedTypes = byType.keys.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Stock Addition Graphs')),
+      body: sortedTypes.isEmpty
+          ? const Center(child: Text('No stock additions recorded yet.'))
+          : ListView(
+              padding: const EdgeInsets.all(12),
+              children: sortedTypes.map((stockType) {
+                final typeEntries = byType[stockType]!..sort((a, b) => a.addedAt.compareTo(b.addedAt));
+                final itemMap = <String, List<StockAdditionEntry>>{};
+                for (final entry in typeEntries) {
+                  itemMap.putIfAbsent(entry.itemName, () => []).add(entry);
+                }
+
+                final sortedItems = itemMap.keys.toList()
+                  ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                final itemSectionKeys = <String, GlobalKey>{
+                  for (final itemName in sortedItems) itemName: GlobalKey(),
+                };
+                final itemTotals = <String, int>{};
+                for (final itemName in sortedItems) {
+                  final itemEntries = itemMap[itemName]!;
+                  final total = itemEntries.fold<int>(0, (sum, entry) => sum + entry.quantityAdded);
+                  itemTotals[itemName] = total;
+                }
+
+                final totalByType = itemTotals.values.fold<int>(0, (sum, value) => sum + value);
+                final palette = [
+                  Theme.of(context).colorScheme.primary,
+                  Theme.of(context).colorScheme.secondary,
+                  Theme.of(context).colorScheme.tertiary,
+                  Theme.of(context).colorScheme.primaryContainer,
+                  Theme.of(context).colorScheme.secondaryContainer,
+                  Theme.of(context).colorScheme.tertiaryContainer,
+                  Theme.of(context).colorScheme.errorContainer,
+                ];
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(stockType),
+                        if (_selectedItemForType(stockType) != null) ...[
+                          const SizedBox(height: 4),
+                          Text('Selected: ${_selectedItemForType(stockType)}'),
+                        ],
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 190,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: PieChart(
+                                  PieChartData(
+                                    pieTouchData: PieTouchData(
+                                      touchCallback: (event, response) {
+                                        final touched = response?.touchedSection;
+                                        if (touched == null) {
+                                          return;
+                                        }
+                                        final index = touched.touchedSectionIndex;
+                                        if (index < 0 || index >= sortedItems.length) {
+                                          return;
+                                        }
+                                        final itemName = sortedItems[index];
+                                        final targetKey = itemSectionKeys[itemName];
+                                        if (targetKey == null) {
+                                          return;
+                                        }
+                                        _highlightSection('$stockType::$itemName');
+                                        _scrollToItem(targetKey);
+                                      },
+                                    ),
+                                    centerSpaceRadius: 30,
+                                    sectionsSpace: 2,
+                                    sections: sortedItems.asMap().entries.map((entry) {
+                                      final index = entry.key;
+                                      final itemName = entry.value;
+                                      final value = itemTotals[itemName]!.toDouble();
+                                      final percentage = totalByType == 0
+                                          ? 0
+                                          : ((value / totalByType) * 100).round();
+
+                                      return PieChartSectionData(
+                                        value: math.max(value, 0.0001),
+                                        color: palette[index % palette.length],
+                                        title: '$percentage%',
+                                        radius: 55,
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Total Added: $totalByType'),
+                                    const SizedBox(height: 8),
+                                    ...sortedItems.map(
+                                      (itemName) => Text('$itemName: ${itemTotals[itemName]}'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...sortedItems.map((itemName) {
+                          final itemEntries = itemMap[itemName]!..sort((a, b) => a.addedAt.compareTo(b.addedAt));
+                          final points = <FlSpot>[];
+                          var cumulative = 0;
+                          for (var index = 0; index < itemEntries.length; index++) {
+                            cumulative += itemEntries[index].quantityAdded;
+                            points.add(FlSpot(index.toDouble(), cumulative.toDouble()));
+                          }
+                          final totalAdded = itemEntries.fold<int>(0, (sum, entry) => sum + entry.quantityAdded);
+
+                          return Padding(
+                            key: itemSectionKeys[itemName],
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeInOut,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: _highlightedSectionId == '$stockType::$itemName'
+                                    ? Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.6)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('$itemName • Total Added: $totalAdded'),
+                                  Text('Addition events: ${itemEntries.length}'),
+                                  const SizedBox(height: 6),
+                                  SizedBox(
+                                    height: 140,
+                                    child: LineChart(
+                                      LineChartData(
+                                        minY: 0,
+                                        gridData: const FlGridData(show: true),
+                                        lineTouchData: const LineTouchData(enabled: false),
+                                        titlesData: const FlTitlesData(
+                                          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                        ),
+                                        lineBarsData: [
+                                          LineChartBarData(
+                                            spots: points,
+                                            isCurved: false,
+                                            barWidth: 3,
+                                            color: Theme.of(context).colorScheme.primary,
+                                            dotData: const FlDotData(show: true),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+}
+
 class CustomerDetailsScreen extends StatefulWidget {
   const CustomerDetailsScreen({
     super.key,
@@ -1556,6 +3057,7 @@ class CustomerDetailsScreen extends StatefulWidget {
     required this.getSalesForCustomer,
     required this.imagePassword,
     required this.dealerLabelById,
+    required this.getStockItems,
     required this.getCurrentSalesDealerLabel,
     required this.getCurrentTickDealerLabel,
     required this.canEditTickStatus,
@@ -1571,11 +3073,12 @@ class CustomerDetailsScreen extends StatefulWidget {
   final List<SaleEntry> Function() getSalesForCustomer;
   final String? imagePassword;
   final String Function(String dealerId) dealerLabelById;
+  final List<StockItem> Function() getStockItems;
   final String Function() getCurrentSalesDealerLabel;
   final String Function() getCurrentTickDealerLabel;
   final bool Function(TickEntry tick) canEditTickStatus;
-  final Future<String?> Function(bool isPaid) onAddTick;
-  final Future<String?> Function() onRecordSale;
+  final Future<String?> Function(bool isPaid, String stockItemId) onAddTick;
+  final Future<String?> Function(String stockItemId) onRecordSale;
   final Future<bool> Function({required String tickId, required bool isPaid}) onUpdateTickPaidStatus;
   final Future<String?> Function() onCapturePhoto;
   final Future<void> Function(String name) onRenameCustomer;
@@ -1660,34 +3163,147 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   }
 
   Future<bool?> _showPaidPrompt({required bool initialPaid}) async {
-    return showDialog<bool>(
+    return showModalBottomSheet<bool>(
       context: context,
+      useSafeArea: true,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Paid?'),
-          content: Text(initialPaid ? 'Current status is paid. Keep as paid?' : 'Mark this as paid?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
-            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes')),
-          ],
+        final media = MediaQuery.of(context);
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            math.max(14, media.viewPadding.bottom + 14),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Paid?', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(initialPaid ? 'Current status is paid. Keep as paid?' : 'Mark this as paid?'),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('No'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('Yes'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
   Future<void> _addTickUsingCurrentDealer() async {
+    final stockItems = widget.getStockItems().where((item) => item.currentCount > 0).toList();
+    if (stockItems.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No stock available. Add stock first.')),
+      );
+      return;
+    }
+
+    String selectedStockItemId = stockItems.first.id;
+    final chosenItemId = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) {
+        final media = MediaQuery.of(context);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                math.max(14, media.viewPadding.bottom + 14),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Select item to tick', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedStockItemId,
+                    decoration: const InputDecoration(labelText: 'Stock item'),
+                    items: stockItems
+                        .map(
+                          (item) => DropdownMenuItem<String>(
+                            value: item.id,
+                            child: Text(
+                              '${item.stockType} • ${item.name} - R${item.price.toStringAsFixed(2)} (Qty: ${item.currentCount})',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setDialogState(() {
+                        selectedStockItemId = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(context).pop(selectedStockItemId),
+                          child: const Text('Next'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (chosenItemId == null) {
+      return;
+    }
+
     final isPaid = await _showPaidPrompt(initialPaid: false);
     if (isPaid == null) {
       return;
     }
 
-    final dealerLabel = await widget.onAddTick(isPaid);
+    final dealerLabel = await widget.onAddTick(isPaid, chosenItemId);
     if (!mounted) {
       return;
     }
     if (dealerLabel == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add at least one dealer first.')),
+        const SnackBar(content: Text('Add at least one dealer and stock item first.')),
       );
       return;
     }
@@ -1701,13 +3317,97 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   }
 
   Future<void> _recordSale() async {
-    final dealerLabel = await widget.onRecordSale();
+    final stockItems = widget.getStockItems().where((item) => item.currentCount > 0).toList();
+    if (stockItems.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No stock available. Add stock first.')),
+      );
+      return;
+    }
+
+    String selectedStockItemId = stockItems.first.id;
+    final chosenItemId = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) {
+        final media = MediaQuery.of(context);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                math.max(14, media.viewPadding.bottom + 14),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Select item to sell', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedStockItemId,
+                    decoration: const InputDecoration(labelText: 'Stock item'),
+                    items: stockItems
+                        .map(
+                          (item) => DropdownMenuItem<String>(
+                            value: item.id,
+                            child: Text(
+                              '${item.name} - R${item.price.toStringAsFixed(2)} (Qty: ${item.currentCount})',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setDialogState(() {
+                        selectedStockItemId = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(context).pop(selectedStockItemId),
+                          child: const Text('Sell'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (chosenItemId == null) {
+      return;
+    }
+
+    final dealerLabel = await widget.onRecordSale(chosenItemId);
     if (!mounted) {
       return;
     }
     if (dealerLabel == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add at least one dealer first.')),
+        const SnackBar(content: Text('Add at least one dealer and stock item first.')),
       );
       return;
     }
@@ -1811,6 +3511,10 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         }
         return b.createdAt.compareTo(a.createdAt);
       });
+    final soldItemsCount = _sales.length;
+    final tickedItemsCount = _customer.ticks.length;
+    final soldValue = _sales.fold<double>(0, (sum, sale) => sum + sale.itemPrice);
+    final tickedValue = _customer.ticks.fold<double>(0, (sum, tick) => sum + tick.itemPrice);
 
     return Scaffold(
       appBar: AppBar(
@@ -1831,6 +3535,8 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                     children: [
                       Text('Tickz count: ${_customer.tickCount}'),
                       Text('Sales count: ${_sales.length}'),
+                      Text('Items sold: $soldItemsCount (R${soldValue.toStringAsFixed(2)})'),
+                      Text('Items ticked: $tickedItemsCount (R${tickedValue.toStringAsFixed(2)})'),
                     ],
                   ),
                 ),
@@ -1891,11 +3597,12 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                       final tick = sortedTicks[index];
                       final tickEditable = widget.canEditTickStatus(tick);
                       return ListTile(
-                        title: Text(widget.dealerLabelById(tick.dealerId)),
+                        title: Text('${tick.stockType} • ${tick.itemName}'),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            Text('${widget.dealerLabelById(tick.dealerId)} • R${tick.itemPrice.toStringAsFixed(2)}'),
                             RichText(
                               text: TextSpan(
                                 style: DefaultTextStyle.of(context).style.copyWith(fontWeight: FontWeight.bold),
