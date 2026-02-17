@@ -288,6 +288,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   final DealInfoRepository _repository = DealInfoRepository();
   AppData _data = AppData.empty();
   bool _isLoading = true;
+  bool _lowStockShownForThisLoad = false;
 
   @override
   void initState() {
@@ -303,6 +304,34 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     setState(() {
       _data = data;
       _isLoading = false;
+      _lowStockShownForThisLoad = false;
+    });
+    _showLowStockNoticeIfNeeded();
+  }
+
+  int _lowStockCount() {
+    final threshold = _data.settings.lowStockThreshold;
+    return _data.stockItems.where((item) => item.currentCount <= threshold).length;
+  }
+
+  void _showLowStockNoticeIfNeeded() {
+    if (_lowStockShownForThisLoad || !mounted) {
+      return;
+    }
+    final count = _lowStockCount();
+    if (count <= 0) {
+      return;
+    }
+    _lowStockShownForThisLoad = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Low stock alert: $count item(s) at or below threshold.'),
+        ),
+      );
     });
   }
 
@@ -391,6 +420,50 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       return;
     }
     setState(() {});
+    _showLowStockNoticeIfNeeded();
+  }
+
+  Future<void> _openGlobalSearch() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => GlobalSearchScreen(data: _data)),
+    );
+  }
+
+  Future<void> _openBackupRestore() async {
+    final restored = await Navigator.of(context).push<AppData>(
+      MaterialPageRoute(
+        builder: (context) => BackupRestoreScreen(
+          data: _data,
+          password: _data.settings.password,
+        ),
+      ),
+    );
+    if (restored == null) {
+      return;
+    }
+    _data = restored;
+    await _repository.saveData(_data);
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    _showLowStockNoticeIfNeeded();
+  }
+
+  Future<void> _openIntegrityTools() async {
+    final repaired = await Navigator.of(context).push<AppData>(
+      MaterialPageRoute(builder: (context) => IntegrityToolsScreen(data: _data)),
+    );
+    if (repaired == null) {
+      return;
+    }
+    _data = repaired;
+    await _repository.saveData(_data);
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    _showLowStockNoticeIfNeeded();
   }
 
   Future<void> _reencryptImageAtPath({
@@ -538,11 +611,487 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         icon: const Icon(Icons.history),
                         label: const Text('History'),
                       ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: _openGlobalSearch,
+                        icon: const Icon(Icons.search),
+                        label: const Text('Global Search'),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: _openBackupRestore,
+                        icon: const Icon(Icons.backup),
+                        label: const Text('Backup / Restore'),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: _openIntegrityTools,
+                        icon: const Icon(Icons.health_and_safety),
+                        label: const Text('Integrity Tools'),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
+    );
+  }
+}
+
+class _GlobalSearchResult {
+  _GlobalSearchResult({required this.category, required this.title, required this.detail});
+
+  final String category;
+  final String title;
+  final String detail;
+}
+
+class GlobalSearchScreen extends StatefulWidget {
+  const GlobalSearchScreen({super.key, required this.data});
+
+  final AppData data;
+
+  @override
+  State<GlobalSearchScreen> createState() => _GlobalSearchScreenState();
+}
+
+class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
+  String _query = '';
+
+  String _dealerLabel(String dealerId) {
+    for (final dealer in widget.data.dealers) {
+      if (dealer.id == dealerId) {
+        return 'ID ${dealer.dealerNumber} - ${dealer.name}';
+      }
+    }
+    return 'Unknown dealer';
+  }
+
+  List<_GlobalSearchResult> _results() {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) {
+      return [];
+    }
+
+    final results = <_GlobalSearchResult>[];
+
+    for (final customer in widget.data.customers) {
+      final haystack = '${customer.name} customer'.toLowerCase();
+      if (haystack.contains(query)) {
+        results.add(_GlobalSearchResult(category: 'Customer', title: customer.name, detail: 'Customer profile'));
+      }
+    }
+
+    for (final dealer in widget.data.dealers) {
+      final label = 'ID ${dealer.dealerNumber} - ${dealer.name}';
+      if (label.toLowerCase().contains(query)) {
+        results.add(_GlobalSearchResult(category: 'Dealer', title: label, detail: 'Dealer profile'));
+      }
+    }
+
+    for (final item in widget.data.stockItems) {
+      final title = '${item.stockType} • ${item.name}';
+      if (title.toLowerCase().contains(query)) {
+        results.add(
+          _GlobalSearchResult(
+            category: 'Stock Item',
+            title: title,
+            detail: 'Current: ${item.currentCount} • Price: R${item.price.toStringAsFixed(2)}',
+          ),
+        );
+      }
+    }
+
+    for (final sale in widget.data.sales) {
+      final text = '${sale.itemName} ${_dealerLabel(sale.dealerId)} sale';
+      if (text.toLowerCase().contains(query)) {
+        results.add(
+          _GlobalSearchResult(
+            category: 'Sale',
+            title: sale.itemName,
+            detail: '${_dealerLabel(sale.dealerId)} • R${sale.itemPrice.toStringAsFixed(2)}',
+          ),
+        );
+      }
+    }
+
+    for (final gift in widget.data.gifts) {
+      final text = '${gift.stockType} ${gift.itemName} gift';
+      if (text.toLowerCase().contains(query)) {
+        results.add(
+          _GlobalSearchResult(
+            category: 'Gift',
+            title: '${gift.stockType} • ${gift.itemName}',
+            detail: '${_dealerLabel(gift.dealerId)} • Qty ${gift.quantity}',
+          ),
+        );
+      }
+    }
+
+    for (final lost in widget.data.lostStock) {
+      final text = '${lost.stockType} ${lost.itemName} lost';
+      if (text.toLowerCase().contains(query)) {
+        results.add(
+          _GlobalSearchResult(
+            category: 'Lost',
+            title: '${lost.stockType} • ${lost.itemName}',
+            detail: 'Qty ${lost.quantity} • R${lost.itemPrice.toStringAsFixed(2)}',
+          ),
+        );
+      }
+    }
+
+    return results;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final results = _results();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Global Search')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Search customers, dealers, items, events',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _query = value;
+                });
+              },
+            ),
+          ),
+          Expanded(
+            child: _query.trim().isEmpty
+                ? const Center(child: Text('Type to search.'))
+                : results.isEmpty
+                    ? const Center(child: Text('No matches found.'))
+                    : ListView.builder(
+                        itemCount: results.length,
+                        itemBuilder: (context, index) {
+                          final result = results[index];
+                          return ListTile(
+                            title: Text('${result.category}: ${result.title}'),
+                            subtitle: Text(result.detail),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BackupRestoreScreen extends StatefulWidget {
+  const BackupRestoreScreen({super.key, required this.data, required this.password});
+
+  final AppData data;
+  final String? password;
+
+  @override
+  State<BackupRestoreScreen> createState() => _BackupRestoreScreenState();
+}
+
+class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
+  List<FileSystemEntity> _backupFiles = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBackups();
+  }
+
+  Future<Directory> _backupDir() async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}/backups');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  Future<void> _loadBackups() async {
+    final dir = await _backupDir();
+    final files = dir.listSync().whereType<File>().where((file) => file.path.endsWith('.bakenc')).toList()
+      ..sort((a, b) => b.path.compareTo(a.path));
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _backupFiles = files;
+      _loading = false;
+    });
+  }
+
+  Future<void> _createBackup() async {
+    final password = widget.password;
+    if (password == null || password.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set a password first to create encrypted backups.')),
+      );
+      return;
+    }
+
+    final json = jsonEncode(widget.data.toJson());
+    final encryptedBytes = _encryptImageBytes(Uint8List.fromList(utf8.encode(json)), password);
+
+    final dir = await _backupDir();
+    final fileName = 'backup_${DateTime.now().millisecondsSinceEpoch}.bakenc';
+    final file = File('${dir.path}/$fileName');
+    await file.writeAsBytes(encryptedBytes, flush: true);
+    await _loadBackups();
+
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Backup created: $fileName')),
+    );
+  }
+
+  Future<void> _restoreBackup(File file) async {
+    final password = widget.password;
+    if (password == null || password.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set a password first to restore encrypted backups.')),
+      );
+      return;
+    }
+
+    final encryptedBytes = await file.readAsBytes();
+    final decoded = _decryptImageBytes(Uint8List.fromList(encryptedBytes), password);
+    if (decoded == null) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to decrypt backup with current password.')),
+      );
+      return;
+    }
+
+    try {
+      final jsonText = utf8.decode(decoded);
+      final parsed = jsonDecode(jsonText) as Map<String, dynamic>;
+      final data = AppData.fromJson(parsed);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(data);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Backup file is invalid or corrupted.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Backup / Restore'),
+        actions: [
+          IconButton(
+            onPressed: _createBackup,
+            icon: const Icon(Icons.backup),
+            tooltip: 'Create backup',
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _backupFiles.isEmpty
+              ? const Center(child: Text('No backups yet. Use the backup icon to create one.'))
+              : ListView.builder(
+                  itemCount: _backupFiles.length,
+                  itemBuilder: (context, index) {
+                    final file = _backupFiles[index] as File;
+                    final name = file.path.split('/').last;
+                    return ListTile(
+                      leading: const Icon(Icons.description_outlined),
+                      title: Text(name),
+                      trailing: FilledButton(
+                        onPressed: () => _restoreBackup(file),
+                        child: const Text('Restore'),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+class IntegrityToolsScreen extends StatefulWidget {
+  const IntegrityToolsScreen({super.key, required this.data});
+
+  final AppData data;
+
+  @override
+  State<IntegrityToolsScreen> createState() => _IntegrityToolsScreenState();
+}
+
+class _IntegrityToolsScreenState extends State<IntegrityToolsScreen> {
+  late AppData _workingData;
+  late List<String> _issues;
+  final Uuid _uuid = const Uuid();
+
+  @override
+  void initState() {
+    super.initState();
+    _workingData = widget.data;
+    _issues = _collectIssues(_workingData);
+  }
+
+  List<String> _collectIssues(AppData data) {
+    final issues = <String>[];
+    final dealerNumbers = <int>{};
+    for (final dealer in data.dealers) {
+      if (dealer.name.trim().isEmpty) {
+        issues.add('Dealer with empty name found.');
+      }
+      if (!dealerNumbers.add(dealer.dealerNumber)) {
+        issues.add('Duplicate dealer numbers found.');
+      }
+    }
+
+    for (final customer in data.customers) {
+      if (customer.name.trim().isEmpty) {
+        issues.add('Customer with empty name found.');
+      }
+    }
+
+    for (final item in data.stockItems) {
+      if (item.currentCount < 0) {
+        issues.add('Stock item with negative current count found.');
+      }
+      if (item.initialCount < 0) {
+        issues.add('Stock item with negative initial count found.');
+      }
+    }
+
+    final dealerIds = data.dealers.map((entry) => entry.id).toSet();
+    if (data.currentSalesDealerId != null &&
+        data.currentSalesDealerId!.isNotEmpty &&
+        !dealerIds.contains(data.currentSalesDealerId)) {
+      issues.add('Current seller pointer is invalid.');
+    }
+    if (data.currentTickDealerId != null &&
+        data.currentTickDealerId!.isNotEmpty &&
+        !dealerIds.contains(data.currentTickDealerId)) {
+      issues.add('Current ticker pointer is invalid.');
+    }
+
+    return issues;
+  }
+
+  void _repair() {
+    var data = _workingData;
+
+    final repairedDealers = [...data.dealers]
+      ..sort((a, b) => a.dealerNumber.compareTo(b.dealerNumber));
+    for (var i = 0; i < repairedDealers.length; i++) {
+      final dealer = repairedDealers[i];
+      repairedDealers[i] = dealer.copyWith(
+        dealerNumber: i + 1,
+        name: dealer.name.trim().isEmpty ? 'Dealer ${i + 1}' : dealer.name,
+      );
+    }
+
+    final repairedCustomers = <Customer>[];
+    for (var i = 0; i < data.customers.length; i++) {
+      final customer = data.customers[i];
+      repairedCustomers.add(
+        customer.copyWith(name: customer.name.trim().isEmpty ? 'Customer ${i + 1}' : customer.name),
+      );
+    }
+
+    final repairedStock = data.stockItems
+        .map(
+          (item) => item.copyWith(
+            id: item.id.trim().isEmpty ? _uuid.v4() : item.id,
+            initialCount: item.initialCount < 0 ? 0 : item.initialCount,
+            currentCount: item.currentCount < 0 ? 0 : item.currentCount,
+          ),
+        )
+        .toList();
+
+    final allTypes = <String>{
+      ...data.stockTypes,
+      ...repairedStock.map((item) => item.stockType),
+      ...data.gifts.map((item) => item.stockType),
+      ...data.lostStock.map((item) => item.stockType),
+    }.where((entry) => entry.trim().isNotEmpty).toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    final validDealerIds = repairedDealers.map((entry) => entry.id).toSet();
+    final defaultDealerId = repairedDealers.isEmpty ? '' : repairedDealers.first.id;
+
+    data = data.copyWith(
+      dealers: repairedDealers,
+      customers: repairedCustomers,
+      stockItems: repairedStock,
+      stockTypes: allTypes,
+      currentSalesDealerId: validDealerIds.contains(data.currentSalesDealerId) ? data.currentSalesDealerId : defaultDealerId,
+      currentTickDealerId: validDealerIds.contains(data.currentTickDealerId) ? data.currentTickDealerId : defaultDealerId,
+    );
+
+    setState(() {
+      _workingData = data;
+      _issues = _collectIssues(data);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Integrity Tools'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(_workingData),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          FilledButton.icon(
+            onPressed: _repair,
+            icon: const Icon(Icons.build_circle_outlined),
+            label: const Text('Auto-repair common issues'),
+          ),
+          const SizedBox(height: 12),
+          if (_issues.isEmpty)
+            const ListTile(
+              leading: Icon(Icons.check_circle_outline),
+              title: Text('No integrity issues detected.'),
+            )
+          else
+            ..._issues.map(
+              (issue) => ListTile(
+                leading: const Icon(Icons.warning_amber_rounded),
+                title: Text(issue),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -593,7 +1142,7 @@ class HistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('History'),
@@ -603,6 +1152,7 @@ class HistoryScreen extends StatelessWidget {
               Tab(text: 'Customers'),
               Tab(text: 'Dealers'),
               Tab(text: 'Stock Types'),
+              Tab(text: 'Gifted/Lost'),
             ],
           ),
         ),
@@ -623,6 +1173,11 @@ class HistoryScreen extends StatelessWidget {
               dealerLabel: _dealerLabel,
               formatDate: _formatDate,
               stockTypeForSale: _stockTypeForSale,
+            ),
+            _GiftLostHistoryTab(
+              data: data,
+              dealerLabel: _dealerLabel,
+              formatDate: _formatDate,
             ),
           ],
         ),
@@ -999,6 +1554,18 @@ class _CustomerHistoryTabState extends State<_CustomerHistoryTab> {
       );
     }
 
+    final gifts = widget.data.gifts.where((gift) => gift.customerId == customer.id);
+    for (final gift in gifts) {
+      events.add(
+        _HistoryEvent(
+          type: 'Gift',
+          date: gift.createdAt,
+          detail:
+              '${widget.dealerLabel(gift.dealerId)} • ${gift.stockType} • ${gift.itemName} • Qty ${gift.quantity} • R${gift.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
     events.sort((a, b) {
       if (_sortOrder == _HistorySortOrder.newest) {
         return b.date.compareTo(a.date);
@@ -1079,11 +1646,14 @@ class _CustomerHistoryTabState extends State<_CustomerHistoryTab> {
         final customer = filteredCustomers[index];
         final customerSales = widget.data.sales.where((sale) => sale.customerId == customer.id).length;
         final customerTicks = customer.ticks.length;
+        final customerGifts = widget.data.gifts
+            .where((gift) => gift.customerId == customer.id)
+            .fold<int>(0, (sum, gift) => sum + gift.quantity);
         final events = _eventsForCustomer(customer);
 
         return ExpansionTile(
           title: Text(customer.name),
-          subtitle: Text('Sales: $customerSales • Ticks: $customerTicks'),
+          subtitle: Text('Sales: $customerSales • Ticks: $customerTicks • Gifted: $customerGifts'),
           children: events.isEmpty
               ? const [
                   ListTile(title: Text('No records yet.')),
@@ -1175,6 +1745,19 @@ class _DealerHistoryTabState extends State<_DealerHistoryTab> {
           ),
         );
       }
+    }
+
+    for (final gift in widget.data.gifts.where((entry) => entry.dealerId == dealer.id)) {
+      final customer = widget.data.customers.where((entry) => entry.id == gift.customerId).toList();
+      final customerName = customer.isEmpty ? 'Unknown customer' : customer.first.name;
+      events.add(
+        _HistoryEvent(
+          type: 'Gift',
+          date: gift.createdAt,
+          detail:
+              '$customerName • ${gift.stockType} • ${gift.itemName} • Qty ${gift.quantity} • R${gift.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
     }
 
     events.sort((a, b) {
@@ -1338,12 +1921,16 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
     final fromItems = widget.data.stockItems.map((item) => item.stockType);
     final fromTicks = widget.data.customers.expand((customer) => customer.ticks.map((tick) => tick.stockType));
     final fromSales = widget.data.sales.map(widget.stockTypeForSale);
+    final fromGifts = widget.data.gifts.map((gift) => gift.stockType);
+    final fromLost = widget.data.lostStock.map((entry) => entry.stockType);
 
     final all = <String>{
       ...fromSettings,
       ...fromItems,
       ...fromTicks,
       ...fromSales,
+      ...fromGifts,
+      ...fromLost,
     };
 
     final cleaned = all.where((type) => type.trim().isNotEmpty).toList()
@@ -1381,6 +1968,29 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
           ),
         );
       }
+    }
+
+    for (final gift in widget.data.gifts.where((entry) => entry.stockType == stockType)) {
+      final customer = widget.data.customers.where((entry) => entry.id == gift.customerId).toList();
+      final customerName = customer.isEmpty ? 'Unknown customer' : customer.first.name;
+      events.add(
+        _HistoryEvent(
+          type: 'Gift',
+          date: gift.createdAt,
+          detail:
+              '$customerName • ${widget.dealerLabel(gift.dealerId)} • ${gift.itemName} • Qty ${gift.quantity} • R${gift.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
+    for (final lost in widget.data.lostStock.where((entry) => entry.stockType == stockType)) {
+      events.add(
+        _HistoryEvent(
+          type: 'Lost',
+          date: lost.createdAt,
+          detail: '${lost.itemName} • Qty ${lost.quantity} • R${lost.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
     }
 
     events.sort((a, b) {
@@ -1468,12 +2078,24 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
                   .expand((customer) => customer.ticks)
                   .where((tick) => tick.stockType == type)
                   .fold<double>(0, (sum, tick) => sum + tick.itemPrice);
+                final giftCount = widget.data.gifts
+                  .where((gift) => gift.stockType == type)
+                  .fold<int>(0, (sum, gift) => sum + gift.quantity);
+                final giftValue = widget.data.gifts
+                  .where((gift) => gift.stockType == type)
+                  .fold<double>(0, (sum, gift) => sum + (gift.itemPrice * gift.quantity));
+                final lostCount = widget.data.lostStock
+                  .where((entry) => entry.stockType == type)
+                  .fold<int>(0, (sum, entry) => sum + entry.quantity);
+                final lostValue = widget.data.lostStock
+                  .where((entry) => entry.stockType == type)
+                  .fold<double>(0, (sum, entry) => sum + (entry.itemPrice * entry.quantity));
               final events = _eventsForType(type);
 
               return ExpansionTile(
                 title: Text(type),
                 subtitle: Text(
-                  'Sales: $saleCount (R${saleValue.toStringAsFixed(2)}) • Ticks: $tickCount (R${tickValue.toStringAsFixed(2)})',
+                  'Sales: $saleCount (R${saleValue.toStringAsFixed(2)}) • Ticks: $tickCount (R${tickValue.toStringAsFixed(2)}) • Gifts: $giftCount (R${giftValue.toStringAsFixed(2)}) • Lost: $lostCount (R${lostValue.toStringAsFixed(2)})',
                 ),
                 children: events.isEmpty
                     ? const [
@@ -1491,6 +2113,273 @@ class _StockTypeHistoryTabState extends State<_StockTypeHistoryTab> {
               );
             },
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GiftLostHistoryTab extends StatefulWidget {
+  const _GiftLostHistoryTab({
+    required this.data,
+    required this.dealerLabel,
+    required this.formatDate,
+  });
+
+  final AppData data;
+  final String Function(String dealerId) dealerLabel;
+  final String Function(DateTime dateTime) formatDate;
+
+  @override
+  State<_GiftLostHistoryTab> createState() => _GiftLostHistoryTabState();
+}
+
+class _GiftLostHistoryTabState extends State<_GiftLostHistoryTab> {
+  _HistorySortOrder _sortOrder = _HistorySortOrder.newest;
+  String _filterQuery = '';
+
+  List<_HistoryEvent> _events() {
+    final events = <_HistoryEvent>[];
+
+    for (final gift in widget.data.gifts) {
+      final customer = widget.data.customers.where((entry) => entry.id == gift.customerId).toList();
+      final customerName = customer.isEmpty ? 'Unknown customer' : customer.first.name;
+      events.add(
+        _HistoryEvent(
+          type: 'Gift',
+          date: gift.createdAt,
+          detail:
+              '$customerName • ${widget.dealerLabel(gift.dealerId)} • ${gift.stockType} • ${gift.itemName} • Qty ${gift.quantity} • R${gift.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
+    for (final lost in widget.data.lostStock) {
+      events.add(
+        _HistoryEvent(
+          type: 'Lost',
+          date: lost.createdAt,
+          detail:
+              '${lost.stockType} • ${lost.itemName} • Qty ${lost.quantity} • R${lost.itemPrice.toStringAsFixed(2)}',
+        ),
+      );
+    }
+
+    events.sort((a, b) {
+      if (_sortOrder == _HistorySortOrder.newest) {
+        return b.date.compareTo(a.date);
+      }
+      return a.date.compareTo(b.date);
+    });
+    return events;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final events = _events();
+    if (events.isEmpty) {
+      return const Center(child: Text('No gift or lost history yet.'));
+    }
+
+    final query = _filterQuery.trim().toLowerCase();
+    final filtered = events.where((event) {
+      if (query.isEmpty) {
+        return true;
+      }
+      return event.type.toLowerCase().contains(query) ||
+          event.detail.toLowerCase().contains(query);
+    }).toList();
+
+    final giftedCount = widget.data.gifts.fold<int>(0, (sum, gift) => sum + gift.quantity);
+    final giftedValue = widget.data.gifts
+        .fold<double>(0, (sum, gift) => sum + (gift.itemPrice * gift.quantity));
+    final lostCount = widget.data.lostStock.fold<int>(0, (sum, entry) => sum + entry.quantity);
+    final lostValue = widget.data.lostStock
+        .fold<double>(0, (sum, entry) => sum + (entry.itemPrice * entry.quantity));
+
+    final byDay = <String, ({DateTime day, int gifted, int lost})>{};
+    for (final gift in widget.data.gifts) {
+      final day = DateTime(gift.createdAt.year, gift.createdAt.month, gift.createdAt.day);
+      final key = day.toIso8601String();
+      final existing = byDay[key];
+      byDay[key] = (
+        day: day,
+        gifted: (existing?.gifted ?? 0) + gift.quantity,
+        lost: existing?.lost ?? 0,
+      );
+    }
+    for (final lost in widget.data.lostStock) {
+      final day = DateTime(lost.createdAt.year, lost.createdAt.month, lost.createdAt.day);
+      final key = day.toIso8601String();
+      final existing = byDay[key];
+      byDay[key] = (
+        day: day,
+        gifted: existing?.gifted ?? 0,
+        lost: (existing?.lost ?? 0) + lost.quantity,
+      );
+    }
+    final dayTotals = byDay.values.toList()..sort((a, b) => a.day.compareTo(b.day));
+    final giftSpots = <FlSpot>[];
+    final lostSpots = <FlSpot>[];
+    for (var index = 0; index < dayTotals.length; index++) {
+      giftSpots.add(FlSpot(index.toDouble(), dayTotals[index].gifted.toDouble()));
+      lostSpots.add(FlSpot(index.toDouble(), dayTotals[index].lost.toDouble()));
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const Text('Sort:'),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Newest'),
+                    selected: _sortOrder == _HistorySortOrder.newest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.newest;
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Oldest'),
+                    selected: _sortOrder == _HistorySortOrder.oldest,
+                    onSelected: (_) {
+                      setState(() {
+                        _sortOrder = _HistorySortOrder.oldest;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Filter by item/type/customer/dealer',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _filterQuery = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Gifted: $giftedCount (R${giftedValue.toStringAsFixed(2)}) • Lost: $lostCount (R${lostValue.toStringAsFixed(2)})',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Gifted vs Lost Overview'),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 160,
+                        child: dayTotals.isEmpty
+                            ? const Center(child: Text('No chart data yet.'))
+                            : LineChart(
+                                LineChartData(
+                                  minY: 0,
+                                  gridData: const FlGridData(show: true),
+                                  lineTouchData: const LineTouchData(enabled: false),
+                                  titlesData: const FlTitlesData(
+                                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  ),
+                                  lineBarsData: [
+                                    LineChartBarData(
+                                      spots: giftSpots,
+                                      isCurved: false,
+                                      barWidth: 3,
+                                      color: Theme.of(context).colorScheme.primary,
+                                      dotData: const FlDotData(show: false),
+                                    ),
+                                    LineChartBarData(
+                                      spots: lostSpots,
+                                      isCurved: false,
+                                      barWidth: 3,
+                                      color: Theme.of(context).colorScheme.error,
+                                      dotData: const FlDotData(show: false),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 160,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: PieChart(
+                                PieChartData(
+                                  centerSpaceRadius: 28,
+                                  sectionsSpace: 2,
+                                  sections: [
+                                    PieChartSectionData(
+                                      value: math.max(giftedCount.toDouble(), 0.0001),
+                                      color: Theme.of(context).colorScheme.primary,
+                                      title: '$giftedCount',
+                                      radius: 50,
+                                    ),
+                                    PieChartSectionData(
+                                      value: math.max(lostCount.toDouble(), 0.0001),
+                                      color: Theme.of(context).colorScheme.error,
+                                      title: '$lostCount',
+                                      radius: 50,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Gifted qty: $giftedCount'),
+                                  const SizedBox(height: 6),
+                                  Text('Lost qty: $lostCount'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: filtered.isEmpty
+              ? const Center(child: Text('No matching gift/lost history.'))
+              : ListView.builder(
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final event = filtered[index];
+                    return ListTile(
+                      title: Text(event.type),
+                      subtitle: Text('${event.detail}\n${widget.formatDate(event.date)}'),
+                      isThreeLine: true,
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -1564,6 +2453,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  Future<void> _setLowStockThreshold() async {
+    final input = await showNameDialog(
+      context: context,
+      title: 'Low stock alert threshold',
+      hint: 'Enter minimum stock count',
+      initialValue: _settings.lowStockThreshold.toString(),
+    );
+    if (input == null) {
+      return;
+    }
+    final threshold = int.tryParse(input.trim());
+    if (threshold == null || threshold < 1) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid number greater than 0.')),
+      );
+      return;
+    }
+    setState(() {
+      _settings = _settings.copyWith(lowStockThreshold: threshold);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1593,6 +2507,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Clear password'),
             onTap: _clearPassword,
           ),
+          ListTile(
+            leading: const Icon(Icons.warning_amber_rounded),
+            title: const Text('Set low stock alert threshold'),
+            subtitle: Text('Current: ${_settings.lowStockThreshold}'),
+            onTap: _setLowStockThreshold,
+          ),
         ],
       ),
     );
@@ -1613,6 +2533,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   AppData _data = AppData.empty();
   bool _isLoading = true;
+  AppData? _undoSnapshot;
+  String? _undoMessage;
 
   @override
   void initState() {
@@ -1655,6 +2577,32 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   Future<void> _save() async {
     await _repository.saveData(_data);
+  }
+
+  void _captureUndo(String message) {
+    _undoSnapshot = _data;
+    _undoMessage = message;
+  }
+
+  bool _canUndoStockAction() => _undoSnapshot != null;
+
+  Future<void> _undoLastStockAction() async {
+    final snapshot = _undoSnapshot;
+    if (snapshot == null) {
+      return;
+    }
+    setState(() {
+      _data = snapshot;
+      _undoSnapshot = null;
+      _undoMessage = null;
+    });
+    await _save();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Last stock action was undone.')),
+    );
   }
 
   List<StockItem> _sortedStockItems(List<StockItem> items) {
@@ -1719,6 +2667,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       currentCount: initialCount,
     );
 
+    _captureUndo('Added stock item');
     setState(() {
       final nextTypes = {..._data.stockTypes, stockType.trim()}.toList()
         ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
@@ -1750,6 +2699,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       return;
     }
 
+    _captureUndo('Increased stock count');
     setState(() {
       _data = _data.copyWith(
         stockItems: _data.stockItems
@@ -1785,9 +2735,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
           getStockItems: () => _sortedStockItems(_data.stockItems),
           getStockTypes: _stockTypes,
           getStockAdditions: () => _data.stockAdditions,
+          getGiftEntries: () => _data.gifts,
+          getLostStockEntries: () => _data.lostStock,
+          lowStockThreshold: _data.settings.lowStockThreshold,
+          canUndoStockAction: _canUndoStockAction,
+          onUndoStockAction: _undoLastStockAction,
           onAddStockType: _addStockType,
           onAddStockItem: _addStockItem,
           onIncreaseStockCount: _increaseStockCount,
+          onRecordLostStock: _recordLostStock,
         ),
       ),
     );
@@ -1920,7 +2876,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
       (customer) => customer.ticks.any((tick) => tick.dealerId == dealerId),
     );
     final usedInSales = _data.sales.any((sale) => sale.dealerId == dealerId);
-    if (usedInTicks || usedInSales) {
+    final usedInGifts = _data.gifts.any((gift) => gift.dealerId == dealerId);
+    if (usedInTicks || usedInSales || usedInGifts) {
       return false;
     }
 
@@ -2093,6 +3050,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       createdAt: DateTime.now(),
     );
 
+    _captureUndo('Recorded sale');
     setState(() {
       _data = _data.copyWith(
         sales: [..._data.sales, sale],
@@ -2108,6 +3066,86 @@ class _CustomersScreenState extends State<CustomersScreen> {
     });
     await _save();
     return _dealerLabelById(activeDealer.id);
+  }
+
+  Future<String?> _recordGift(String customerId, String stockItemId) async {
+    final dealers = _sortedDealers(_data.dealers);
+    if (dealers.isEmpty) {
+      return null;
+    }
+
+    final stockItem = _stockItemById(stockItemId);
+    if (stockItem == null || stockItem.currentCount <= 0) {
+      return null;
+    }
+
+    final activeDealer = _dealerById(_data.currentSalesDealerId) ?? dealers.first;
+    final nextId = _nextDealerIdAfter(activeDealer.id) ?? activeDealer.id;
+
+    final gift = GiftEntry(
+      id: _uuid.v4(),
+      customerId: customerId,
+      dealerId: activeDealer.id,
+      stockItemId: stockItem.id,
+      itemName: stockItem.name,
+      stockType: stockItem.stockType,
+      itemPrice: stockItem.price,
+      quantity: 1,
+      createdAt: DateTime.now(),
+    );
+
+    _captureUndo('Recorded gift');
+    setState(() {
+      _data = _data.copyWith(
+        gifts: [..._data.gifts, gift],
+        stockItems: _data.stockItems
+            .map(
+              (item) => item.id == stockItem.id
+                  ? item.copyWith(currentCount: item.currentCount - 1)
+                  : item,
+            )
+            .toList(),
+        currentSalesDealerId: nextId,
+      );
+    });
+    await _save();
+    return _dealerLabelById(activeDealer.id);
+  }
+
+  Future<bool> _recordLostStock({
+    required String stockItemId,
+    required int quantityLost,
+  }) async {
+    final stockItem = _stockItemById(stockItemId);
+    if (stockItem == null || quantityLost <= 0 || stockItem.currentCount < quantityLost) {
+      return false;
+    }
+
+    final lost = LostStockEntry(
+      id: _uuid.v4(),
+      stockItemId: stockItem.id,
+      itemName: stockItem.name,
+      stockType: stockItem.stockType,
+      itemPrice: stockItem.price,
+      quantity: quantityLost,
+      createdAt: DateTime.now(),
+    );
+
+    _captureUndo('Recorded lost stock');
+    setState(() {
+      _data = _data.copyWith(
+        lostStock: [..._data.lostStock, lost],
+        stockItems: _data.stockItems
+            .map(
+              (item) => item.id == stockItem.id
+                  ? item.copyWith(currentCount: item.currentCount - quantityLost)
+                  : item,
+            )
+            .toList(),
+      );
+    });
+    await _save();
+    return true;
   }
 
   Future<String?> _recordTick(String customerId, bool isPaid, String stockItemId) async {
@@ -2149,6 +3187,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final updatedCustomers = [..._data.customers];
     updatedCustomers[customerIndex] = updatedCustomer;
 
+    _captureUndo('Recorded tick');
     setState(() {
       _data = _data.copyWith(
         customers: updatedCustomers,
@@ -2190,6 +3229,10 @@ class _CustomersScreenState extends State<CustomersScreen> {
     return _data.sales.where((sale) => sale.customerId == customerId).toList();
   }
 
+  List<GiftEntry> _giftsForCustomer(String customerId) {
+    return _data.gifts.where((gift) => gift.customerId == customerId).toList();
+  }
+
   Widget _buildCustomerAvatar(Customer customer) {
     final image = loadSecureMemoryImage(
       encryptedPath: customer.profileImagePath,
@@ -2207,6 +3250,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
       appBar: AppBar(
         title: const Text('Customers'),
         actions: [
+          IconButton(
+            onPressed: _canUndoStockAction() ? _undoLastStockAction : null,
+            icon: const Icon(Icons.undo),
+            tooltip: _undoMessage == null ? 'Undo' : 'Undo: $_undoMessage',
+          ),
           IconButton(
             onPressed: _openStockScreen,
             icon: const Icon(Icons.inventory_2),
@@ -2263,6 +3311,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                 customerId: customer.id,
                                 getCustomer: () => _data.customers.firstWhere((entry) => entry.id == customer.id),
                                 getSalesForCustomer: () => _salesForCustomer(customer.id),
+                                getGiftsForCustomer: () => _giftsForCustomer(customer.id),
                                 imagePassword: _data.settings.password,
                                 dealerLabelById: _dealerLabelById,
                                 getStockItems: () => _sortedStockItems(_data.stockItems),
@@ -2273,6 +3322,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                                   _recordTick(customer.id, isPaid, stockItemId),
                                 onRecordSale: (stockItemId) =>
                                   _recordSale(customer.id, stockItemId),
+                                onRecordGift: (stockItemId) =>
+                                  _recordGift(customer.id, stockItemId),
                                 onUpdateTickPaidStatus: ({required tickId, required isPaid}) =>
                                     _updateTickPaidStatus(
                                   customerId: customer.id,
@@ -2415,7 +3466,7 @@ class _DealersScreenState extends State<DealersScreen> {
                           if (!removed) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Dealer cannot be removed if sales/ticks exist.'),
+                                content: Text('Dealer cannot be removed if sales/ticks/gifts exist.'),
                               ),
                             );
                           }
@@ -2483,14 +3534,25 @@ class StockScreen extends StatefulWidget {
     required this.getStockItems,
     required this.getStockTypes,
     required this.getStockAdditions,
+    required this.getGiftEntries,
+    required this.getLostStockEntries,
+    required this.lowStockThreshold,
+    required this.canUndoStockAction,
+    required this.onUndoStockAction,
     required this.onAddStockType,
     required this.onAddStockItem,
     required this.onIncreaseStockCount,
+    required this.onRecordLostStock,
   });
 
   final List<StockItem> Function() getStockItems;
   final List<String> Function() getStockTypes;
   final List<StockAdditionEntry> Function() getStockAdditions;
+  final List<GiftEntry> Function() getGiftEntries;
+  final List<LostStockEntry> Function() getLostStockEntries;
+  final int lowStockThreshold;
+  final bool Function() canUndoStockAction;
+  final Future<void> Function() onUndoStockAction;
   final Future<void> Function(String stockType) onAddStockType;
   final Future<void> Function({
     required String stockType,
@@ -2502,6 +3564,10 @@ class StockScreen extends StatefulWidget {
     required String stockItemId,
     required int addCount,
   }) onIncreaseStockCount;
+  final Future<bool> Function({
+    required String stockItemId,
+    required int quantityLost,
+  }) onRecordLostStock;
 
   @override
   State<StockScreen> createState() => _StockScreenState();
@@ -2753,14 +3819,154 @@ class _StockScreenState extends State<StockScreen> {
     setState(() {});
   }
 
+  Future<void> _showLostStockDialog() async {
+    final stockItems = widget.getStockItems().where((item) => item.currentCount > 0).toList();
+    if (stockItems.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No stock available to mark as lost.')),
+      );
+      return;
+    }
+
+    String selectedStockItemId = stockItems.first.id;
+    final quantityController = TextEditingController();
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) {
+        final media = MediaQuery.of(context);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                bottom: math.max(media.viewInsets.bottom, media.viewPadding.bottom),
+              ),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  math.max(14, media.viewPadding.bottom + 14),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Record lost stock', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedStockItemId,
+                      decoration: const InputDecoration(labelText: 'Stock item'),
+                      items: stockItems
+                          .map(
+                            (item) => DropdownMenuItem<String>(
+                              value: item.id,
+                              child: Text(
+                                '${item.stockType} • ${item.name} (Qty: ${item.currentCount})',
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setDialogState(() {
+                          selectedStockItemId = value;
+                        });
+                      },
+                    ),
+                    TextField(
+                      controller: quantityController,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      scrollPadding: const EdgeInsets.only(bottom: 220),
+                      decoration: const InputDecoration(labelText: 'Quantity lost'),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final quantityLost = int.tryParse(quantityController.text.trim());
+    if (quantityLost == null || quantityLost <= 0) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid quantity greater than 0.')),
+      );
+      return;
+    }
+
+    final success = await widget.onRecordLostStock(
+      stockItemId: selectedStockItemId,
+      quantityLost: quantityLost,
+    );
+
+    if (!mounted) {
+      return;
+    }
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not enough stock to mark that quantity as lost.')),
+      );
+      return;
+    }
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final stockItems = widget.getStockItems();
+    final gifts = widget.getGiftEntries();
+    final lostEntries = widget.getLostStockEntries();
+    final lowItems = stockItems
+        .where((item) => item.currentCount <= widget.lowStockThreshold)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Stock'),
         actions: [
+          IconButton(
+            onPressed: widget.canUndoStockAction() ? widget.onUndoStockAction : null,
+            icon: const Icon(Icons.undo),
+            tooltip: 'Undo last stock action',
+          ),
           IconButton(
             onPressed: () {
               Navigator.of(context).push(
@@ -2783,27 +3989,52 @@ class _StockScreenState extends State<StockScreen> {
       ),
       body: stockItems.isEmpty
           ? const Center(child: Text('No stock items yet. Add one with +'))
-          : ListView.builder(
-              itemCount: stockItems.length,
-              itemBuilder: (context, index) {
-                final item = stockItems[index];
-                return ListTile(
-                  title: Text('${item.stockType} • ${item.name} - R${item.price.toStringAsFixed(2)}'),
-                  subtitle: Text(
-                    'Initial: ${item.initialCount} • Current: ${item.currentCount} • Sold: ${item.soldCount}',
+          : ListView(
+              children: [
+                if (lowItems.isNotEmpty)
+                  Card(
+                    margin: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                    child: ListTile(
+                      leading: const Icon(Icons.warning_amber_rounded),
+                      title: Text('Low stock alert (${lowItems.length})'),
+                      subtitle: Text('Threshold: ${widget.lowStockThreshold}'),
+                    ),
                   ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.add_box_outlined),
-                    tooltip: 'Add stock count',
-                    onPressed: () => _showIncreaseStockDialog(item),
-                  ),
-                );
-              },
+                ...stockItems.map((item) {
+                  final giftedCount = gifts
+                      .where((gift) => gift.stockItemId == item.id)
+                      .fold<int>(0, (sum, gift) => sum + gift.quantity);
+                  final lostCount = lostEntries
+                      .where((entry) => entry.stockItemId == item.id)
+                      .fold<int>(0, (sum, entry) => sum + entry.quantity);
+                  final isLow = item.currentCount <= widget.lowStockThreshold;
+                  return ListTile(
+                    leading: isLow ? const Icon(Icons.error_outline) : null,
+                    title: Text('${item.stockType} • ${item.name} - R${item.price.toStringAsFixed(2)}'),
+                    subtitle: Text(
+                      'Initial: ${item.initialCount} • Current: ${item.currentCount} • Used: ${item.soldCount} • Gifted: $giftedCount • Lost: $lostCount${isLow ? ' • LOW' : ''}',
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.add_box_outlined),
+                      tooltip: 'Add stock count',
+                      onPressed: () => _showIncreaseStockDialog(item),
+                    ),
+                  );
+                }),
+              ],
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddStockDialog,
+        onPressed: _showLostStockDialog,
+        tooltip: 'Record lost stock',
         child: const Icon(Icons.add),
       ),
+      persistentFooterButtons: [
+        FilledButton.icon(
+          onPressed: _showAddStockDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Add Stock Item'),
+        ),
+      ],
     );
   }
 }
@@ -3055,6 +4286,7 @@ class CustomerDetailsScreen extends StatefulWidget {
     required this.customerId,
     required this.getCustomer,
     required this.getSalesForCustomer,
+    required this.getGiftsForCustomer,
     required this.imagePassword,
     required this.dealerLabelById,
     required this.getStockItems,
@@ -3063,6 +4295,7 @@ class CustomerDetailsScreen extends StatefulWidget {
     required this.canEditTickStatus,
     required this.onAddTick,
     required this.onRecordSale,
+    required this.onRecordGift,
     required this.onUpdateTickPaidStatus,
     required this.onCapturePhoto,
     required this.onRenameCustomer,
@@ -3071,6 +4304,7 @@ class CustomerDetailsScreen extends StatefulWidget {
   final String customerId;
   final Customer Function() getCustomer;
   final List<SaleEntry> Function() getSalesForCustomer;
+  final List<GiftEntry> Function() getGiftsForCustomer;
   final String? imagePassword;
   final String Function(String dealerId) dealerLabelById;
   final List<StockItem> Function() getStockItems;
@@ -3079,6 +4313,7 @@ class CustomerDetailsScreen extends StatefulWidget {
   final bool Function(TickEntry tick) canEditTickStatus;
   final Future<String?> Function(bool isPaid, String stockItemId) onAddTick;
   final Future<String?> Function(String stockItemId) onRecordSale;
+  final Future<String?> Function(String stockItemId) onRecordGift;
   final Future<bool> Function({required String tickId, required bool isPaid}) onUpdateTickPaidStatus;
   final Future<String?> Function() onCapturePhoto;
   final Future<void> Function(String name) onRenameCustomer;
@@ -3090,6 +4325,7 @@ class CustomerDetailsScreen extends StatefulWidget {
 class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   late Customer _customer;
   late List<SaleEntry> _sales;
+  late List<GiftEntry> _gifts;
   late String _currentSalesDealerLabel;
   late String _currentTickDealerLabel;
   Timer? _countdownTicker;
@@ -3102,6 +4338,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
     super.initState();
     _customer = widget.getCustomer();
     _sales = widget.getSalesForCustomer();
+    _gifts = widget.getGiftsForCustomer();
     _currentSalesDealerLabel = widget.getCurrentSalesDealerLabel();
     _currentTickDealerLabel = widget.getCurrentTickDealerLabel();
     _refreshAvatarCacheIfNeeded(force: true);
@@ -3121,6 +4358,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
   void _refreshData() {
     _customer = widget.getCustomer();
     _sales = widget.getSalesForCustomer();
+    _gifts = widget.getGiftsForCustomer();
     _currentSalesDealerLabel = widget.getCurrentSalesDealerLabel();
     _currentTickDealerLabel = widget.getCurrentTickDealerLabel();
     _refreshAvatarCacheIfNeeded();
@@ -3420,6 +4658,110 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
     );
   }
 
+  Future<void> _recordGift() async {
+    final stockItems = widget.getStockItems().where((item) => item.currentCount > 0).toList();
+    if (stockItems.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No stock available. Add stock first.')),
+      );
+      return;
+    }
+
+    String selectedStockItemId = stockItems.first.id;
+    final chosenItemId = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) {
+        final media = MediaQuery.of(context);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                math.max(14, media.viewPadding.bottom + 14),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Select item to gift', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedStockItemId,
+                    decoration: const InputDecoration(labelText: 'Stock item'),
+                    items: stockItems
+                        .map(
+                          (item) => DropdownMenuItem<String>(
+                            value: item.id,
+                            child: Text(
+                              '${item.stockType} • ${item.name} - R${item.price.toStringAsFixed(2)} (Qty: ${item.currentCount})',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setDialogState(() {
+                        selectedStockItemId = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(context).pop(selectedStockItemId),
+                          child: const Text('Gift'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (chosenItemId == null) {
+      return;
+    }
+
+    final dealerLabel = await widget.onRecordGift(chosenItemId);
+    if (!mounted) {
+      return;
+    }
+    if (dealerLabel == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one dealer and stock item first.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _refreshData();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Gift recorded for $dealerLabel')),
+    );
+  }
+
   Future<void> _renameCustomer() async {
     final name = await showNameDialog(
       context: context,
@@ -3512,8 +4854,10 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
         return b.createdAt.compareTo(a.createdAt);
       });
     final soldItemsCount = _sales.length;
+    final giftedItemsCount = _gifts.fold<int>(0, (sum, gift) => sum + gift.quantity);
     final tickedItemsCount = _customer.ticks.length;
     final soldValue = _sales.fold<double>(0, (sum, sale) => sum + sale.itemPrice);
+    final giftedValue = _gifts.fold<double>(0, (sum, gift) => sum + (gift.itemPrice * gift.quantity));
     final tickedValue = _customer.ticks.fold<double>(0, (sum, tick) => sum + tick.itemPrice);
 
     return Scaffold(
@@ -3536,6 +4880,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                       Text('Tickz count: ${_customer.tickCount}'),
                       Text('Sales count: ${_sales.length}'),
                       Text('Items sold: $soldItemsCount (R${soldValue.toStringAsFixed(2)})'),
+                      Text('Items gifted: $giftedItemsCount (R${giftedValue.toStringAsFixed(2)})'),
                       Text('Items ticked: $tickedItemsCount (R${tickedValue.toStringAsFixed(2)})'),
                     ],
                   ),
@@ -3582,6 +4927,14 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen> {
                     onPressed: _recordSale,
                     icon: const Icon(Icons.point_of_sale),
                     label: const Text('Sell'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _recordGift,
+                    icon: const Icon(Icons.card_giftcard),
+                    label: const Text('Gift'),
                   ),
                 ),
               ],
